@@ -11,6 +11,8 @@ const { pipeline } = require("stream/promises");
 const crypto = require("crypto");
 const jobs = new Map();
 const uploads = new Map();
+let activeBuilds = 0;
+const MAX_CONCURRENT_BUILDS = 2;
 
 const app = express();
 app.use(express.json({ limit: "8mb" }));
@@ -115,6 +117,7 @@ async function requestFile(rawUrl) {
       lookup: (_hostname, _options, cb) => cb(null, checked.resolved.address, checked.resolved.family)
     };
     const response = await axios.get(checked.url.toString(), {
+      proxy: false,
       responseType: "stream",
       maxRedirects: 0,
       timeout: 30000,
@@ -220,6 +223,7 @@ app.post("/api/build", async (req, res) => {
   const uploadId = String(req.body.uploadId || "").trim();
   if (!minecraftVersion) return res.status(400).json({ error: "Escolha a versão do Minecraft." });
   if (!modLoader) return res.status(400).json({ error: "Escolha o modloader." });
+  if (activeBuilds >= MAX_CONCURRENT_BUILDS) return res.status(429).json({ error: "O servidor já está processando 2 modpacks. Aguarde um terminar e tente novamente." });
   if (!links.length && !uploadId) return res.status(400).json({ error: "Adicione pelo menos um link ou arquivo." });
   if (links.length > MAX_LINKS) return res.status(400).json({ error: `Máximo de ${MAX_LINKS} links por ZIP.` });
   const cleanLinks = links.map(x => String(x || "").trim()).filter(Boolean);
@@ -244,6 +248,7 @@ app.post("/api/build", async (req, res) => {
       return res.status(400).json({ error: "Arquivos locais expiraram. Adicione-os novamente." });
     }
     if (localUpload) localUpload.inUse = (localUpload.inUse || 0) + 1;
+    activeBuilds += 1;
     res.json({ id });
 
     (async () => {
@@ -337,6 +342,7 @@ app.post("/api/build", async (req, res) => {
         updateJob(job, { status: "error", message: "❌ " + (e.message || "Não foi possível gerar o ZIP."), percent: 0 });
         await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
       } finally {
+        activeBuilds = Math.max(0, activeBuilds - 1);
         if (localUpload) {
           localUpload.inUse = Math.max(0, (localUpload.inUse || 1) - 1);
           if (!localUpload.inUse) {
