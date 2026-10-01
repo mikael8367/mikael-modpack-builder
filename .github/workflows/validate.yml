@@ -1,0 +1,37 @@
+name: Validate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - name: Check server syntax
+        run: node --check server.js
+      - name: Check frontend JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("public/index.html").read_text(encoding="utf-8")
+          js = html.split("<script>", 1)[1].split("</script>", 1)[0]
+          Path("/tmp/frontend.js").write_text(js, encoding="utf-8")
+          PY
+          node --check /tmp/frontend.js
+      - name: Smoke test server
+        run: |
+          node server.js > /tmp/server.log 2>&1 &
+          pid=$!
+          trap "kill $pid" EXIT
+          for i in $(seq 1 20); do
+            curl -fsS http://127.0.0.1:3000/api/status && exit 0 || sleep 1
+          done
+          cat /tmp/server.log
+          exit 1
