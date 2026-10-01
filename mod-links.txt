@@ -1,0 +1,7 @@
+# Mikael Modpack Builder - lista de links
+# Minecraft: 1.12.2 Forge
+# Coloque uma URL direta para cada arquivo, uma por linha.
+# Linhas começando com # são ignoradas.
+# Exemplo:
+# https://exemplo.com/meu-mod-1.12.2.jar
+
