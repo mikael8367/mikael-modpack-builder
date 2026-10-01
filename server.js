@@ -10,34 +10,49 @@ const os = require("os");
 const { pipeline } = require("stream/promises");
 const crypto = require("crypto");
 const jobs = new Map();
+const uploads = new Map();
 
 const app = express();
-app.use(express.json({ limit: "256kb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 3000;
 const MAX_LINKS = 999999;
 const MAX_FILE_BYTES = 150 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
+const UPLOAD_TTL_MS = 30 * 60 * 1000;
+const JOB_TTL_MS = 60 * 60 * 1000;
+const MAX_UPLOAD_FILES = 999;
 
+const http = require("http");
+const https = require("https");
 const multer = require("multer");
-const upload = multer({ dest: path.join(os.tmpdir(), "mikael-uploads-"), limits: { fileSize: MAX_FILE_BYTES, files: 999 } });
-const uploads = new Map();
-
+const upload = multer({ dest: path.join(os.tmpdir(), "mikael-uploads-"), limits: { fileSize: MAX_FILE_BYTES, files: MAX_UPLOAD_FILES } });
 app.post("/api/upload-files", upload.array("files"), async (req, res) => {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: "Nenhum arquivo foi enviado." });
+  const uploadTotal = files.reduce((sum, f) => sum + Number(f.size || 0), 0);
+  if (uploadTotal > MAX_TOTAL_BYTES) {
+    await Promise.all(files.map(f => f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
+    return res.status(400).json({ error: "Os arquivos selecionados ultrapassam 500 MB no total." });
+  }
+  const invalid = files.filter(f => !/\.(jar|zip)$/i.test(f.originalname || ""));
+  if (invalid.length) {
+    await Promise.all(files.map(f => f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
+    return res.status(400).json({ error: "Envie somente arquivos .jar ou .zip." });
+  }
   const id = crypto.randomUUID();
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-local-"));
   const saved = [];
+  const used = new Set();
   try {
     for (const f of files) {
-      const safe = safeFileName(f.originalname, saved.length);
+      const safe = uniqueName(safeFileName(f.originalname, saved.length), used);
       const target = path.join(dir, safe);
       await fsp.rename(f.path, target);
       saved.push({ filename: safe, path: target });
     }
-    uploads.set(id, { dir, files: saved, created: Date.now() });
+    uploads.set(id, { dir, files: saved, created: Date.now(), inUse: 0 });
     res.json({ id, files: saved.map(f => f.filename) });
   } catch (e) {
     await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -48,14 +63,25 @@ app.post("/api/upload-files", upload.array("files"), async (req, res) => {
 
 
 function isPrivateIp(ip) {
-  if (net.isIP(ip) === 4) {
-    const p = ip.split(".").map(Number);
-    return p[0] === 10 || p[0] === 127 || (p[0] === 169 && p[1] === 254) ||
-      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168) || p[0] === 0;
+  let s = String(ip || "").toLowerCase().trim();
+  if (s.startsWith("[") && s.endsWith("]")) s = s.slice(1, -1);
+  const v = net.isIP(s);
+  if (v === 4) {
+    const p = s.split(".").map(Number);
+    return p[0] === 0 || p[0] === 10 || p[0] === 127 ||
+      (p[0] === 100 && p[1] >= 64 && p[1] <= 127) ||
+      (p[0] === 169 && p[1] === 254) ||
+      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+      (p[0] === 192 && (p[1] === 0 || p[1] === 168)) ||
+      (p[0] === 198 && p[1] >= 18 && p[1] <= 19);
   }
-  if (net.isIP(ip) === 6) {
-    const s = ip.toLowerCase();
-    return s === "::1" || s.startsWith("fc") || s.startsWith("fd") || s.startsWith("fe80:");
+  if (v === 6) {
+    if (s === "::" || s === "::1") return true;
+    if (s.startsWith("fc") || s.startsWith("fd") || /^fe[89ab]/.test(s) || s.startsWith("ff")) return true;
+    if (s.startsWith("::ffff:")) {
+      const mapped = s.slice(7);
+      if (net.isIP(mapped) === 4) return isPrivateIp(mapped);
+    }
   }
   return false;
 }
@@ -65,31 +91,42 @@ async function validatePublicUrl(raw) {
   try { u = new URL(raw); } catch { throw new Error("URL inválida."); }
   if (!["http:", "https:"].includes(u.protocol)) throw new Error("A URL precisa usar http:// ou https://.");
   if (!u.hostname) throw new Error("URL sem domínio.");
-  if (["localhost", "localhost.localdomain"].includes(u.hostname.toLowerCase())) throw new Error("Domínio local não permitido.");
-  if (net.isIP(u.hostname)) {
-    if (isPrivateIp(u.hostname)) throw new Error("IP privado/local não permitido.");
+  const hostname = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (["localhost", "localhost.localdomain", "localhost6"].includes(hostname)) throw new Error("Domínio local não permitido.");
+  const literalFamily = net.isIP(hostname);
+  let resolved;
+  if (literalFamily) {
+    if (isPrivateIp(hostname)) throw new Error("IP privado/local não permitido.");
+    resolved = { address: hostname, family: literalFamily };
   } else {
-    const addresses = await dns.lookup(u.hostname, { all: true });
+    const addresses = await dns.lookup(hostname, { all: true });
     if (!addresses.length || addresses.some(a => isPrivateIp(a.address))) throw new Error("O domínio aponta para um endereço privado/local.");
+    resolved = addresses[0];
   }
-  return u;
+  return { url: u, resolved };
 }
 
 async function requestFile(rawUrl) {
   let current = rawUrl;
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
-    const url = await validatePublicUrl(current);
-    const response = await axios.get(url.toString(), {
+    const checked = await validatePublicUrl(current);
+    const agentOptions = {
+      keepAlive: false,
+      lookup: (_hostname, _options, cb) => cb(null, checked.resolved.address, checked.resolved.family)
+    };
+    const response = await axios.get(checked.url.toString(), {
       responseType: "stream",
       maxRedirects: 0,
       timeout: 30000,
+      httpAgent: checked.url.protocol === "http:" ? new http.Agent(agentOptions) : undefined,
+      httpsAgent: checked.url.protocol === "https:" ? new https.Agent(agentOptions) : undefined,
       validateStatus: s => (s >= 200 && s < 300) || [301,302,303,307,308].includes(s)
     });
     if ([301,302,303,307,308].includes(response.status)) {
       const location = response.headers.location;
       response.data.destroy();
       if (!location) throw new Error("Redirecionamento sem destino.");
-      current = new URL(location, url).toString();
+      current = new URL(location, checked.url).toString();
       continue;
     }
     const length = Number(response.headers["content-length"] || 0);
@@ -97,7 +134,7 @@ async function requestFile(rawUrl) {
       response.data.destroy();
       throw new Error(`Arquivo maior que ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB.`);
     }
-    return { response, url };
+    return { response, url: checked.url };
   }
   throw new Error("Muitos redirecionamentos.");
 }
@@ -125,6 +162,23 @@ function uniqueName(name, used) {
 }
 
 app.get("/api/status", (req, res) => res.json({ ok: true, maxLinks: MAX_LINKS, maxFileMB: MAX_FILE_BYTES / 1024 / 1024, maxTotalMB: MAX_TOTAL_BYTES / 1024 / 1024 }));
+
+const cleanupTimer = setInterval(async () => {
+  const now = Date.now();
+  for (const [id, item] of uploads) {
+    if (!item.inUse && now - item.created > UPLOAD_TTL_MS) {
+      uploads.delete(id);
+      await fsp.rm(item.dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  for (const [id, job] of jobs) {
+    if (now - job.created > JOB_TTL_MS) {
+      jobs.delete(id);
+      await fsp.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}, 5 * 60 * 1000);
+cleanupTimer.unref();
 
 app.get("/api/build/:id/events", (req, res) => {
   const job = jobs.get(req.params.id);
@@ -166,73 +220,150 @@ app.post("/api/build", async (req, res) => {
   const uploadId = String(req.body.uploadId || "").trim();
   if (!minecraftVersion) return res.status(400).json({ error: "Escolha a versão do Minecraft." });
   if (!modLoader) return res.status(400).json({ error: "Escolha o modloader." });
-  if (!links.length) return res.status(400).json({ error: "Adicione pelo menos um link." });
+  if (!links.length && !uploadId) return res.status(400).json({ error: "Adicione pelo menos um link ou arquivo." });
   if (links.length > MAX_LINKS) return res.status(400).json({ error: `Máximo de ${MAX_LINKS} links por ZIP.` });
   const cleanLinks = links.map(x => String(x || "").trim()).filter(Boolean);
   const uniqueLinks = [...new Set(cleanLinks)];
   if (uniqueLinks.length !== cleanLinks.length) return res.status(400).json({ error: "Há links repetidos na lista." });
 
+  let localUpload = null;
+  let tempDir;
   const id = crypto.randomUUID();
-  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-modpack-"));
-  const job = {
-    tempDir, zipPath: null, zipName: null, status: "running", clients: new Set(),
-    progress: { status: "starting", current: 0, total: uniqueLinks.length, percent: 0, filename: "", message: "Iniciando..." }
-  };
-  jobs.set(id, job);
-  res.json({ id });
 
-  (async () => {
-    const files = [];
-    let total = 0;
-    const localUpload = uploadId ? uploads.get(uploadId) : null;
-    if (uploadId && !localUpload) throw new Error("Arquivos locais expiraram. Adicione-os novamente.");
-    if (localUpload) {
-      for (const f of localUpload.files) { const target = path.join(tempDir, f.filename); await fsp.copyFile(f.path, target); const st = await fsp.stat(target); total += st.size; if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB."); files.push({ filename:f.filename, target, source:"arquivo local" }); updateJob(job,{current:files.length,filename:f.filename,percent:Math.min(85,Math.round(files.length/Math.max(1,uniqueLinks.length+localUpload.files.length)*85)),message:`✓ ${f.filename} adicionado`}); }
+  try {
+    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-modpack-"));
+    const job = {
+      tempDir, zipPath: null, zipName: null, status: "running", created: Date.now(), clients: new Set(),
+      progress: { status: "starting", current: 0, total: uniqueLinks.length, percent: 0, filename: "", message: "Iniciando..." }
+    };
+    jobs.set(id, job);
+    localUpload = uploadId ? uploads.get(uploadId) : null;
+    if (uploadId && !localUpload) {
+      await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      jobs.delete(id);
+      return res.status(400).json({ error: "Arquivos locais expiraram. Adicione-os novamente." });
     }
-    try {
-      for (let i = 0; i < uniqueLinks.length; i++) {
-        const raw = uniqueLinks[i];
-        updateJob(job, { status: "downloading", current: i + 1, filename: `Mod ${i + 1}`, percent: Math.round(i / uniqueLinks.length * 100), message: `Baixando mod ${i + 1} de ${uniqueLinks.length}...` });
-        const { response, url } = await requestFile(raw);
-        const disposition = String(response.headers["content-disposition"] || "");
-        const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
-        const fromHeader = match ? match[1].trim() : "";
-        const filename = uniqueName(safeFileName(fromHeader || url.pathname, i), new Set(files.map(f => f.filename.toLowerCase())));
-        const target = path.join(tempDir, `${i}-${filename}`);
-        let bytes = 0;
-        const expected = Number(response.headers["content-length"] || 0);
-        response.data.on("data", chunk => {
-          bytes += chunk.length; total += chunk.length;
-          const filePercent = expected ? bytes / expected : 0;
-          const percent = Math.min(99, Math.round(((i + filePercent) / uniqueLinks.length) * 100));
-          updateJob(job, { filename, percent, message: `Baixando ${filename} • ${i + 1}/${uniqueLinks.length}` });
-          if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) response.data.destroy(new Error("Limite de tamanho excedido."));
+    if (localUpload) localUpload.inUse = (localUpload.inUse || 0) + 1;
+    res.json({ id });
+
+    (async () => {
+      const files = [];
+      let total = 0;
+      try {
+        if (localUpload) {
+          job.progress.total = uniqueLinks.length + localUpload.files.length;
+          for (const f of localUpload.files) {
+            const target = path.join(tempDir, f.filename);
+            await fsp.copyFile(f.path, target);
+            const st = await fsp.stat(target);
+            total += st.size;
+            if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
+            files.push({ filename: f.filename, target, source: "arquivo local" });
+            const current = files.length;
+            updateJob(job, {
+              current, filename: f.filename,
+              percent: Math.min(85, Math.round(current / Math.max(1, job.progress.total) * 85)),
+              message: `✓ ${f.filename} adicionado`
+            });
+          }
+        }
+
+        for (let i = 0; i < uniqueLinks.length; i++) {
+          const raw = uniqueLinks[i];
+          const current = files.length + 1;
+          updateJob(job, {
+            status: "downloading", current, filename: `Mod ${i + 1}`,
+            percent: Math.round((current - 1) / Math.max(1, job.progress.total) * 85),
+            message: `Baixando mod ${i + 1} de ${uniqueLinks.length}...`
+          });
+          const { response, url } = await requestFile(raw);
+          const disposition = String(response.headers["content-disposition"] || "");
+          const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
+          const fromHeader = match ? match[1].trim() : "";
+          const used = new Set(files.map(f => f.filename.toLowerCase()));
+          const filename = uniqueName(safeFileName(fromHeader || url.pathname, i), used);
+          const target = path.join(tempDir, `${i}-${filename}`);
+          let bytes = 0;
+          const expected = Number(response.headers["content-length"] || 0);
+          response.data.on("data", chunk => {
+            bytes += chunk.length;
+            total += chunk.length;
+            const filePercent = expected ? bytes / expected : 0;
+            const percent = Math.min(85, Math.round(((current - 1 + filePercent) / Math.max(1, job.progress.total)) * 85));
+            updateJob(job, { filename, percent, message: `Baixando ${filename} • ${i + 1}/${uniqueLinks.length}` });
+            if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) response.data.destroy(new Error("Limite de tamanho excedido."));
+          });
+          await pipeline(response.data, fs.createWriteStream(target));
+          if (bytes > MAX_FILE_BYTES) throw new Error(`O arquivo ${filename} ultrapassa 150 MB.`);
+          if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
+          files.push({ filename, target, source: raw });
+          updateJob(job, {
+            current: files.length,
+            percent: Math.min(85, Math.round(files.length / Math.max(1, job.progress.total) * 85)),
+            message: `✓ ${filename} instalado`
+          });
+        }
+
+        updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
+        const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
+        const zipName = `Mikael_Modpack_${safeVersion}.zip`;
+        const zipPath = path.join(tempDir, zipName);
+        const output = fs.createWriteStream(zipPath);
+        const archive = archiver("zip", { zlib: { level: 6 } });
+        const manifest = {
+          format: "mikael-modpack-links", version: 1, minecraft: minecraftVersion,
+          modLoader, modLoaderVersion: loaderVersion || null,
+          files: files.map(f => ({ file: f.filename, source: f.source }))
+        };
+        for (const file of files) archive.file(file.target, { name: `mods/${file.filename}` });
+        archive.append(JSON.stringify(manifest, null, 2), { name: "mikael-modpack.json" });
+        archive.append(JSON.stringify({
+          minecraft: minecraftVersion, modLoader, modLoaderVersion: loaderVersion || null,
+          note: "Arquivos adicionados a partir das URLs fornecidas pelo usuário."
+        }, null, 2), { name: "modpack-info.json" });
+        await new Promise((resolve, reject) => {
+          output.on("close", resolve);
+          output.on("error", reject);
+          archive.on("error", reject);
+          archive.pipe(output);
+          archive.finalize();
         });
-        await pipeline(response.data, fs.createWriteStream(target));
-        if (bytes > MAX_FILE_BYTES) throw new Error(`O arquivo ${filename} ultrapassa 150 MB.`);
-        if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
-        files.push({ filename, target, source: raw });
-        updateJob(job, { current: i + 1, percent: Math.round(((i + 1) / uniqueLinks.length) * 85), message: `✓ ${filename} instalado` });
+        job.zipPath = zipPath;
+        job.zipName = zipName;
+        job.status = "done";
+        updateJob(job, { status: "done", percent: 100, current: job.progress.total, message: "✅ Todos os mods foram instalados e o ZIP está pronto!" });
+      } catch (e) {
+        job.status = "error";
+        updateJob(job, { status: "error", message: "❌ " + (e.message || "Não foi possível gerar o ZIP."), percent: 0 });
+        await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      } finally {
+        if (localUpload) {
+          localUpload.inUse = Math.max(0, (localUpload.inUse || 1) - 1);
+          if (!localUpload.inUse) {
+            uploads.delete(uploadId);
+            await fsp.rm(localUpload.dir, { recursive: true, force: true }).catch(() => {});
+          }
+        }
       }
-
-      updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
-      const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
-      const zipName = `Mikael_Modpack_${safeVersion}.zip`;
-      const zipPath = path.join(tempDir, zipName);
-      const output = fs.createWriteStream(zipPath);
-      const archive = archiver("zip", { zlib: { level: 6 } });
-      const manifest = { format:"mikael-modpack-links", version:1, minecraft:minecraftVersion, modLoader, modLoaderVersion:loaderVersion || null, files:files.map(f=>({file:f.filename,source:f.source})) };
-      for (const file of files) archive.file(file.target, { name: `mods/${file.filename}` });
-      archive.append(JSON.stringify(manifest,null,2), { name:"mikael-modpack.json" });
-      archive.append(JSON.stringify({minecraft:minecraftVersion,modLoader,modLoaderVersion:loaderVersion||null,note:"Arquivos adicionados a partir das URLs fornecidas pelo usuário."},null,2), { name:"modpack-info.json" });
-      await new Promise((resolve,reject) => { output.on("close",resolve); archive.on("error",reject); archive.pipe(output); archive.finalize(); });
-      job.zipPath = zipPath; job.zipName = zipName; job.status = "done";
-      updateJob(job, { status:"done", percent:100, message:"✅ Todos os mods foram instalados e o ZIP está pronto!" });
-    } catch (e) {
-      job.status = "error";
-      updateJob(job, { status:"error", message:"❌ " + (e.message || "Não foi possível gerar o ZIP."), percent:0 });
-      await fsp.rm(tempDir, { recursive:true, force:true }).catch(()=>{});
-    }
-  })();
+    })();
+  } catch (e) {
+    jobs.delete(id);
+    if (tempDir) await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    return res.status(500).json({ error: e.message || "Não foi possível iniciar a geração." });
+  }
 });
+
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err instanceof multer.MulterError) {
+    const messages = {
+      LIMIT_FILE_SIZE: "Um dos arquivos ultrapassa 150 MB.",
+      LIMIT_FILE_COUNT: `Você pode enviar no máximo ${MAX_UPLOAD_FILES} arquivos por vez.`,
+      LIMIT_UNEXPECTED_FILE: "Campo de upload inválido."
+    };
+    return res.status(400).json({ error: messages[err.code] || "Falha no upload." });
+  }
+  return res.status(400).json({ error: err.message || "Falha na requisição." });
+});
+
 app.listen(PORT, "0.0.0.0", () => console.log(`Mikael Modpack Builder em ${PORT}`));
