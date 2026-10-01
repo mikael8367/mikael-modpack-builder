@@ -17,7 +17,7 @@ Abra http://localhost:3000
 - Start: npm start
 - Health check: /api/status
 
-O serviço não precisa de API Key da CurseForge para o modo por links.
+Para downloads automatizados do CurseForge, configure a variável secreta `CURSEFORGE_API_KEY` no Render. A chave não deve ser colocada no frontend ou no TXT. O servidor usa a chave no header `x-api-key` e também consegue resolver links de projeto do CurseForge para o arquivo compatível com a versão do Minecraft/modloader selecionados.
 
 ## Limites
 
@@ -37,3 +37,10 @@ O TXT pode ter uma URL por linha ou usar o formato:
 `Nome do mod = https://exemplo.com/mod.jar`
 
 Linhas vazias e linhas começando com `#` são ignoradas. Ao carregar, a interface mostra o nome e o link encontrados.
+
+
+## CurseForge
+
+A CurseForge passou a exigir autenticação por API Key para downloads automatizados da CDN em 16/07/2026. O builder suporta a variável de ambiente `CURSEFORGE_API_KEY`, envia a chave somente do servidor e resolve URLs de projeto/download do CurseForge quando a chave está configurada.
+
+A API oficial documenta a autenticação pelo header `x-api-key` e o endpoint de URL de download de arquivos.
