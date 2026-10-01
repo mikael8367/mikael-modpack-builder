@@ -10,7 +10,7 @@ app.use(express.json({ limit: "256kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
-const MAX_LINKS = 50;
+const MAX_LINKS = 999999;
 const MAX_FILE_BYTES = 150 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
