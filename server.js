@@ -14,6 +14,31 @@ const jobs = new Map();
 const app = express();
 app.use(express.json({ limit: "256kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+const multer = require("multer");
+const upload = multer({ dest: path.join(os.tmpdir(), "mikael-uploads-"), limits: { fileSize: MAX_FILE_BYTES, files: 999 } });
+const uploads = new Map();
+
+app.post("/api/upload-files", upload.array("files"), async (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ error: "Nenhum arquivo foi enviado." });
+  const id = crypto.randomUUID();
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-local-"));
+  const saved = [];
+  try {
+    for (const f of files) {
+      const safe = safeFileName(f.originalname, saved.length);
+      const target = path.join(dir, safe);
+      await fsp.rename(f.path, target);
+      saved.push({ filename: safe, path: target });
+    }
+    uploads.set(id, { dir, files: saved, created: Date.now() });
+    res.json({ id, files: saved.map(f => f.filename) });
+  } catch (e) {
+    await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    res.status(500).json({ error: e.message || "Falha ao receber arquivos." });
+  }
+});
+
 
 const PORT = process.env.PORT || 3000;
 const MAX_LINKS = 999999;
@@ -137,6 +162,7 @@ app.post("/api/build", async (req, res) => {
   const modLoader = String(req.body.modLoader || "").trim();
   const loaderVersion = String(req.body.loaderVersion || "").trim();
   const links = Array.isArray(req.body.links) ? req.body.links : [];
+  const uploadId = String(req.body.uploadId || "").trim();
   if (!minecraftVersion) return res.status(400).json({ error: "Escolha a versão do Minecraft." });
   if (!modLoader) return res.status(400).json({ error: "Escolha o modloader." });
   if (!links.length) return res.status(400).json({ error: "Adicione pelo menos um link." });
@@ -157,6 +183,11 @@ app.post("/api/build", async (req, res) => {
   (async () => {
     const files = [];
     let total = 0;
+    const localUpload = uploadId ? uploads.get(uploadId) : null;
+    if (uploadId && !localUpload) throw new Error("Arquivos locais expiraram. Adicione-os novamente.");
+    if (localUpload) {
+      for (const f of localUpload.files) { const target = path.join(tempDir, f.filename); await fsp.copyFile(f.path, target); const st = await fsp.stat(target); total += st.size; if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB."); files.push({ filename:f.filename, target, source:"arquivo local" }); updateJob(job,{current:files.length,filename:f.filename,percent:Math.min(85,Math.round(files.length/Math.max(1,uniqueLinks.length+localUpload.files.length)*85)),message:`✓ ${f.filename} adicionado`}); }
+    }
     try {
       for (let i = 0; i < uniqueLinks.length; i++) {
         const raw = uniqueLinks[i];
