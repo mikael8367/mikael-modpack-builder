@@ -114,7 +114,13 @@ async function requestFile(rawUrl) {
     const checked = await validatePublicUrl(current);
     const agentOptions = {
       keepAlive: false,
-      lookup: (_hostname, _options, cb) => cb(null, checked.resolved.address, checked.resolved.family)
+      lookup: (_hostname, options, cb) => {
+        // Node pode pedir resultados no formato `all: true`.
+        // Nesse caso o callback precisa receber [{ address, family }].
+        const result = { address: checked.resolved.address, family: checked.resolved.family };
+        if (options && options.all) return cb(null, [result]);
+        return cb(null, result.address, result.family);
+      }
     };
     const response = await axios.get(checked.url.toString(), {
       proxy: false,
