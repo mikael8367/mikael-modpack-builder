@@ -4,6 +4,10 @@ const archiver = require("archiver");
 const path = require("path");
 const dns = require("dns").promises;
 const net = require("net");
+const fs = require("fs");
+const fsp = require("fs").promises;
+const os = require("os");
+const { pipeline } = require("stream/promises");
 
 const app = express();
 app.use(express.json({ limit: "256kb" }));
@@ -55,9 +59,9 @@ async function requestFile(rawUrl) {
     });
     if ([301,302,303,307,308].includes(response.status)) {
       const location = response.headers.location;
+      response.data.destroy();
       if (!location) throw new Error("Redirecionamento sem destino.");
       current = new URL(location, url).toString();
-      response.data.destroy();
       continue;
     }
     const length = Number(response.headers["content-length"] || 0);
@@ -109,26 +113,10 @@ app.post("/api/build", async (req, res) => {
   const uniqueLinks = [...new Set(cleanLinks)];
   if (uniqueLinks.length !== cleanLinks.length) return res.status(400).json({ error: "Há links repetidos na lista." });
 
-  res.setHeader("Content-Type", "application/zip");
-  const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
-  const zipName = `Mikael_Modpack_${safeVersion}_${Date.now()}.zip`;
-  res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
-
-  const archive = archiver("zip", { zlib: { level: 6 } });
-  archive.on("error", e => { if (!res.headersSent) res.status(500); res.end(); });
-  archive.pipe(res);
-
-  const used = new Set();
-  const manifest = {
-    format: "mikael-modpack-links",
-    version: 1,
-    minecraft: minecraftVersion,
-    modLoader,
-    modLoaderVersion: loaderVersion || null,
-    files: []
-  };
-
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-modpack-"));
+  const files = [];
   let total = 0;
+
   try {
     for (let i = 0; i < uniqueLinks.length; i++) {
       const raw = uniqueLinks[i];
@@ -136,30 +124,46 @@ app.post("/api/build", async (req, res) => {
       const disposition = String(response.headers["content-disposition"] || "");
       const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
       const fromHeader = match ? match[1].trim() : "";
-      const filename = uniqueName(safeFileName(fromHeader || url.pathname, i), used);
-      const length = Number(response.headers["content-length"] || 0);
-      if (length) total += length;
-      if (total > MAX_TOTAL_BYTES) {
-        response.data.destroy();
-        throw new Error(`O pacote ultrapassa ${Math.round(MAX_TOTAL_BYTES / 1024 / 1024)} MB.`);
+      const filename = uniqueName(safeFileName(fromHeader || url.pathname, i), new Set(files.map(f => f.filename.toLowerCase())));
+      const target = path.join(tempDir, `${i}-${filename}`);
+      let bytes = 0;
+
+      response.data.on("data", chunk => {
+        bytes += chunk.length;
+        total += chunk.length;
+        if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) response.data.destroy(new Error("Limite de tamanho excedido."));
+      });
+
+      try {
+        await pipeline(response.data, fs.createWriteStream(target));
+      } catch (e) {
+        throw new Error(e.message === "aborted" ? "Download interrompido." : e.message);
       }
 
-      await new Promise((resolve, reject) => {
-        let bytes = 0;
-        response.data.on("data", chunk => {
-          bytes += chunk.length;
-          total += length ? 0 : chunk.length;
-          if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) {
-            response.data.destroy(new Error("Limite de tamanho excedido."));
-          }
-        });
-        response.data.on("error", reject);
-        response.data.on("end", resolve);
-        archive.append(response.data, { name: `mods/${filename}` });
-      });
-      manifest.files.push({ file: filename, source: raw });
+      if (bytes > MAX_FILE_BYTES) throw new Error(`O arquivo ${filename} ultrapassa 150 MB.`);
+      if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
+      files.push({ filename, target, source: raw });
     }
 
+    const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
+    const zipName = `Mikael_Modpack_${safeVersion}.zip`;
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+
+    const archive = archiver("zip", { zlib: { level: 6 } });
+    archive.on("error", e => res.destroy(e));
+    archive.pipe(res);
+
+    const manifest = {
+      format: "mikael-modpack-links",
+      version: 1,
+      minecraft: minecraftVersion,
+      modLoader,
+      modLoaderVersion: loaderVersion || null,
+      files: files.map(f => ({ file: f.filename, source: f.source }))
+    };
+
+    for (const file of files) archive.file(file.target, { name: `mods/${file.filename}` });
     archive.append(JSON.stringify(manifest, null, 2), { name: "mikael-modpack.json" });
     archive.append(JSON.stringify({
       minecraft: minecraftVersion,
@@ -169,9 +173,10 @@ app.post("/api/build", async (req, res) => {
     }, null, 2), { name: "modpack-info.json" });
     await archive.finalize();
   } catch (e) {
-    archive.abort();
     if (!res.headersSent) res.status(422).json({ error: e.message || "Não foi possível baixar um dos links." });
-    else res.end();
+    else res.destroy(e);
+  } finally {
+    await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 });
 
