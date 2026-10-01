@@ -25,6 +25,9 @@ const MAX_REDIRECTS = 5;
 const UPLOAD_TTL_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 60 * 60 * 1000;
 const MAX_UPLOAD_FILES = 999;
+const CURSEFORGE_API_KEY = String(process.env.CURSEFORGE_API_KEY || "").trim();
+const CURSEFORGE_API_BASE = "https://api.curseforge.com/v1";
+const CURSEFORGE_GAME_ID = 432;
 
 const http = require("http");
 const https = require("https");
@@ -108,29 +111,94 @@ async function validatePublicUrl(raw) {
   return { url: u, resolved };
 }
 
-async function requestFile(rawUrl) {
-  let current = rawUrl;
+function isCurseForgeHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "curseforge.com" || h.endsWith(".curseforge.com") || h === "forgecdn.net" || h.endsWith(".forgecdn.net");
+}
+
+async function curseForgeApiGet(pathname, params = {}) {
+  if (!CURSEFORGE_API_KEY) throw new Error("CurseForge agora exige uma API Key para downloads automatizados. Configure CURSEFORGE_API_KEY no Render.");
+  const response = await axios.get(CURSEFORGE_API_BASE + pathname, {
+    proxy: false,
+    timeout: 20000,
+    params,
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.1" }
+  });
+  return response.data && response.data.data;
+}
+
+async function resolveCurseForgeUrl(rawUrl, context = {}) {
+  let u;
+  try { u = new URL(rawUrl); } catch { return rawUrl; }
+  if (!CURSEFORGE_API_KEY || !isCurseForgeHost(u.hostname)) return rawUrl;
+  const parts = u.pathname.split("/").filter(Boolean);
+  const modIndex = parts.indexOf("mc-mods");
+  if (modIndex < 0 || !parts[modIndex + 1]) return rawUrl;
+  const slug = parts[modIndex + 1];
+  const downloadIndex = parts.indexOf("download") + 1;
+  const fileId = downloadIndex > 0 && /^\d+$/.test(parts[downloadIndex]) ? Number(parts[downloadIndex]) : null;
+  const mod = await curseForgeApiGet("/mods/search", { gameId: CURSEFORGE_GAME_ID, slug, pageSize: 1 });
+  const found = Array.isArray(mod) ? mod[0] : null;
+  if (!found || !found.id) throw new Error("Mod CurseForge não encontrado: " + slug);
+  if (fileId) {
+    const downloadUrl = await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId + "/download-url");
+    if (!downloadUrl) throw new Error("Arquivo CurseForge " + fileId + " não possui URL de download.");
+    return String(downloadUrl);
+  }
+  const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
+  const loaderType = loaderMap[String(context.modLoader || "")];
+  const files = await curseForgeApiGet("/mods/" + found.id + "/files", {
+    gameVersion: String(context.minecraftVersion || ""),
+    modLoaderType: loaderType,
+    pageSize: 50,
+    sortField: 3,
+    sortOrder: "desc"
+  });
+  const candidates = Array.isArray(files)
+    ? files.filter(f => f && f.isAvailable !== false && Array.isArray(f.gameVersions) && f.gameVersions.includes(String(context.minecraftVersion || "")))
+    : [];
+  const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates[0];
+  if (!selected) throw new Error("Nenhum arquivo compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
+  if (!selected.downloadUrl) throw new Error("O arquivo de " + slug + " não possui URL de download disponível.");
+  return String(selected.downloadUrl);
+}
+
+async function requestFile(rawUrl, context = {}) {
+  let current = await resolveCurseForgeUrl(rawUrl, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const checked = await validatePublicUrl(current);
     const agentOptions = {
       keepAlive: false,
       lookup: (_hostname, options, cb) => {
-        // Node pode pedir resultados no formato `all: true`.
-        // Nesse caso o callback precisa receber [{ address, family }].
         const result = { address: checked.resolved.address, family: checked.resolved.family };
         if (options && options.all) return cb(null, [result]);
         return cb(null, result.address, result.family);
       }
     };
-    const response = await axios.get(checked.url.toString(), {
-      proxy: false,
-      responseType: "stream",
-      maxRedirects: 0,
-      timeout: 30000,
-      httpAgent: checked.url.protocol === "http:" ? new http.Agent(agentOptions) : undefined,
-      httpsAgent: checked.url.protocol === "https:" ? new https.Agent(agentOptions) : undefined,
-      validateStatus: s => (s >= 200 && s < 300) || [301,302,303,307,308].includes(s)
-    });
+    const headers = {
+      "User-Agent": "Mozilla/5.0 (compatible; Mikael-Modpack-Builder/3.1)",
+      Accept: "*/*"
+    };
+    if (CURSEFORGE_API_KEY && checked.url.hostname.toLowerCase().endsWith("forgecdn.net")) headers["x-api-key"] = CURSEFORGE_API_KEY;
+    let response;
+    try {
+      response = await axios.get(checked.url.toString(), {
+        proxy: false,
+        responseType: "stream",
+        maxRedirects: 0,
+        timeout: 30000,
+        headers,
+        httpAgent: checked.url.protocol === "http:" ? new http.Agent(agentOptions) : undefined,
+        httpsAgent: checked.url.protocol === "https:" ? new https.Agent(agentOptions) : undefined,
+        validateStatus: s => (s >= 200 && s < 300) || [301,302,303,307,308].includes(s)
+      });
+    } catch (err) {
+      const status = err && err.response && err.response.status;
+      if ((status === 401 || status === 403) && isCurseForgeHost(checked.url.hostname)) {
+        throw new Error("CurseForge recusou o download (HTTP " + status + "). Configure uma CURSEFORGE_API_KEY válida no Render; desde 16/07/2026 a CDN do CurseForge exige autenticação para downloads automatizados.");
+      }
+      throw err;
+    }
     if ([301,302,303,307,308].includes(response.status)) {
       const location = response.headers.location;
       response.data.destroy();
@@ -138,10 +206,15 @@ async function requestFile(rawUrl) {
       current = new URL(location, checked.url).toString();
       continue;
     }
+    const contentType = String(response.headers["content-type"] || "").toLowerCase();
+    if (contentType.includes("text/html")) {
+      response.data.destroy();
+      throw new Error("O link não entregou um arquivo. Para CurseForge, use uma URL de download do arquivo ou configure CURSEFORGE_API_KEY para o resolvedor automático.");
+    }
     const length = Number(response.headers["content-length"] || 0);
     if (length > MAX_FILE_BYTES) {
       response.data.destroy();
-      throw new Error(`Arquivo maior que ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB.`);
+      throw new Error("Arquivo maior que " + Math.round(MAX_FILE_BYTES / 1024 / 1024) + " MB.");
     }
     return { response, url: checked.url };
   }
@@ -287,7 +360,7 @@ app.post("/api/build", async (req, res) => {
             percent: Math.round((current - 1) / Math.max(1, job.progress.total) * 85),
             message: `Baixando mod ${i + 1} de ${uniqueLinks.length}...`
           });
-          const { response, url } = await requestFile(raw);
+          const { response, url } = await requestFile(raw, { minecraftVersion, modLoader });
           const disposition = String(response.headers["content-disposition"] || "");
           const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
           const fromHeader = match ? match[1].trim() : "";
