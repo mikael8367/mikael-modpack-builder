@@ -14,6 +14,12 @@ const jobs = new Map();
 const app = express();
 app.use(express.json({ limit: "256kb" }));
 app.use(express.static(path.join(__dirname, "public")));
+const PORT = process.env.PORT || 3000;
+const MAX_LINKS = 999999;
+const MAX_FILE_BYTES = 150 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
+
 const multer = require("multer");
 const upload = multer({ dest: path.join(os.tmpdir(), "mikael-uploads-"), limits: { fileSize: MAX_FILE_BYTES, files: 999 } });
 const uploads = new Map();
@@ -40,11 +46,6 @@ app.post("/api/upload-files", upload.array("files"), async (req, res) => {
 });
 
 
-const PORT = process.env.PORT || 3000;
-const MAX_LINKS = 999999;
-const MAX_FILE_BYTES = 150 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
-const MAX_REDIRECTS = 5;
 
 function isPrivateIp(ip) {
   if (net.isIP(ip) === 4) {
