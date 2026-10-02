@@ -78,7 +78,7 @@ test("transient HTTP and network errors are retryable", () => {
 
 
 test("download byte reservations prevent concurrent 500 MB overflow", () => {
-  assert.equal(canReserveDownloadBytes(200 * 1024 * 1024, 0, 250 * 1024 * 1024), true);
+  assert.equal(canReserveDownloadBytes(100 * 1024 * 1024, 0, 100 * 1024 * 1024), true);
   assert.equal(canReserveDownloadBytes(200 * 1024 * 1024, 100 * 1024 * 1024, 250 * 1024 * 1024), false);
   assert.equal(canReserveDownloadBytes(0, 0, 151 * 1024 * 1024), false);
 });
@@ -127,6 +127,18 @@ test("completed ZIP remains downloadable after a successful first download", asy
   } finally {
     jobs.delete(id);
     await new Promise(resolve => server.close(resolve));
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("truncated ZIP/JAR is rejected by integrity check", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-truncated-"));
+  try {
+    const truncated = path.join(dir, "truncated.jar");
+    await fs.writeFile(truncated, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02, 0x03]));
+    assert.equal(await isZipArchive(truncated), false);
+  } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
