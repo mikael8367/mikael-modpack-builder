@@ -14,7 +14,8 @@ const {
   validateArchiveFile,
   parseContentDispositionFilename,
   isRetryableDownloadError,
-  canReserveDownloadBytes
+  canReserveDownloadBytes,
+  verifyFileIntegrity
 } = require("../server.js");
 
 test("Content-Disposition filename parsing supports RFC 5987 and normal filename", () => {
@@ -138,6 +139,24 @@ test("truncated ZIP/JAR is rejected by integrity check", async () => {
     const truncated = path.join(dir, "truncated.jar");
     await fs.writeFile(truncated, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x01, 0x02, 0x03]));
     assert.equal(await isZipArchive(truncated), false);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("published hash mismatch is rejected", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-hash-"));
+  try {
+    const file = path.join(dir, "mod.jar");
+    await fs.writeFile(file, "correct content");
+    const crypto = require("node:crypto");
+    const good = crypto.createHash("sha1").update("correct content").digest("hex");
+    await verifyFileIntegrity(file, { sha1: good }, "mod.jar");
+    await assert.rejects(
+      () => verifyFileIntegrity(file, { sha1: "0000000000000000000000000000000000000000" }, "mod.jar"),
+      /Integridade inválida/
+    );
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
