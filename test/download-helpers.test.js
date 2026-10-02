@@ -7,6 +7,7 @@ const archiver = require("archiver");
 
 const {
   app,
+  parseCurseForgeFileId,
   MAX_UPLOAD_BODY_BYTES,
   jobs,
   isPrivateIp,
@@ -249,4 +250,11 @@ test("empty ZIP is not considered a usable mod archive", async () => {
 test("upload body guard constant leaves multipart overhead room", () => {
   assert.ok(MAX_UPLOAD_BODY_BYTES >= 500 * 1024 * 1024);
   assert.ok(MAX_UPLOAD_BODY_BYTES < 520 * 1024 * 1024);
+});
+
+
+test("CurseForge file ID parser accepts files and download paths", () => {
+  assert.equal(parseCurseForgeFileId(["minecraft","mc-mods","jei","files","123456"]), 123456);
+  assert.equal(parseCurseForgeFileId(["minecraft","mc-mods","jei","download","123456"]), 123456);
+  assert.equal(parseCurseForgeFileId(["minecraft","mc-mods","jei","files","abc"]), null);
 });
