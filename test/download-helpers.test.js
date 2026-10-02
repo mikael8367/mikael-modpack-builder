@@ -202,3 +202,8 @@ test("manifest URL redaction removes query tokens", () => {
   assert.equal(redactUrl("https://example.com/mod.jar?token=secret&utm_source=x"), "https://example.com/mod.jar");
   assert.equal(redactUrl("not-a-url").length <= 500, true);
 });
+
+
+test("LiteLoader file extension is preserved", () => {
+  assert.equal(safeFileName("example.litemod", 0), "example.litemod");
+});
