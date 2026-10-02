@@ -59,7 +59,7 @@ app.post("/api/upload-files", upload.array("files"), async (req, res) => {
       await fsp.rename(f.path, target);
       saved.push({ filename: safe, path: target });
     }
-    uploads.set(id, { dir, files: saved, created: Date.now(), inUse: 0 });
+    uploads.set(id, { dir, files: saved, created: Date.now(), lastAccess: Date.now(), inUse: 0 });
     res.json({ id, files: saved.map(f => f.filename) });
   } catch (e) {
     await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -130,7 +130,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.3" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.4" }
   });
   return response.data && response.data.data;
 }
@@ -224,7 +224,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.3" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.4" }
       });
       const version = response.data;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -248,7 +248,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.3" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.4" }
       });
       projectData = project.data;
     } catch (err) {
@@ -279,7 +279,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.3" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.4" }
       });
       versions = response.data;
     } catch (err) {
@@ -329,7 +329,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.3 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.4 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -497,7 +497,8 @@ app.get("/api/status", (req, res) => res.json({ ok: true, maxLinks: MAX_LINKS, m
 const cleanupTimer = setInterval(async () => {
   const now = Date.now();
   for (const [id, item] of uploads) {
-    if (!item.inUse && now - item.created > UPLOAD_TTL_MS) {
+    const lastTouch = Math.max(item.created, Number(item.lastAccess || 0));
+    if (!item.inUse && now - lastTouch > UPLOAD_TTL_MS) {
       uploads.delete(id);
       await fsp.rm(item.dir, { recursive: true, force: true }).catch(() => {});
     }
@@ -629,6 +630,7 @@ app.post("/api/build", async (req, res) => {
           let success = false;
           let lastError = null;
           let reservedForThis = 0;
+          let lastProgressAt = 0;
 
           for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES && !success; attempt++) {
             let response = null;
@@ -665,14 +667,18 @@ app.post("/api/build", async (req, res) => {
                 }
                 const filePercent = expected ? Math.min(1, bytes / expected) : 0;
                 const progress = Math.min(85, Math.round(((completed + filePercent) / totalCount) * 85));
-                const elapsed = Math.max(0.1, (Date.now() - job.created) / 1000);
-                updateJob(job, {
-                  current: completed,
-                  filename,
-                  percent: progress,
-                  message: "Baixando " + filename + " • " + completed + "/" + totalCount,
-                  bytesPerSecond: Math.round(total / elapsed)
-                });
+                const now = Date.now();
+                const elapsed = Math.max(0.1, (now - job.created) / 1000);
+                if (now - lastProgressAt >= 250 || bytes <= 0) {
+                  lastProgressAt = now;
+                  updateJob(job, {
+                    current: completed,
+                    filename,
+                    percent: progress,
+                    message: "Baixando " + filename + " • " + completed + "/" + totalCount,
+                    bytesPerSecond: Math.round(total / elapsed)
+                  });
+                }
                 if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) {
                   response.data.destroy(new Error("Limite de tamanho excedido."));
                 }
@@ -773,10 +779,7 @@ app.post("/api/build", async (req, res) => {
         activeBuilds = Math.max(0, activeBuilds - 1);
         if (localUpload) {
           localUpload.inUse = Math.max(0, (localUpload.inUse || 1) - 1);
-          if (!localUpload.inUse) {
-            uploads.delete(uploadId);
-            await fsp.rm(localUpload.dir, { recursive: true, force: true }).catch(() => {});
-          }
+          localUpload.lastAccess = Date.now();
         }
       }
     })();
