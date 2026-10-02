@@ -26,6 +26,7 @@ const UPLOAD_TTL_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 60 * 60 * 1000;
 const MAX_DOWNLOAD_RETRIES = 3;
 const RETRY_BASE_MS = 700;
+const DOWNLOAD_TIMEOUT_MS = 120000;
 const API_RETRIES = 3;
 const API_RETRY_BASE_MS = 800;
 const MODRINTH_MIN_REQUEST_INTERVAL_MS = 200;
@@ -70,6 +71,7 @@ app.post("/api/upload-files", upload.array("files"), async (req, res) => {
     uploads.set(id, { dir, files: saved, created: Date.now(), lastAccess: Date.now(), inUse: 0 });
     res.json({ id, files: saved.map(f => f.filename) });
   } catch (e) {
+    await Promise.all(files.map(f => f && f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
     await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
     res.status(500).json({ error: e.message || "Falha ao receber arquivos." });
   }
@@ -111,6 +113,7 @@ async function validatePublicUrl(raw) {
   let u;
   try { u = new URL(raw); } catch { throw new Error("URL inválida."); }
   if (!["http:", "https:"].includes(u.protocol)) throw new Error("A URL precisa usar http:// ou https://.");
+  if (u.username || u.password) throw new Error("URLs com usuário ou senha embutidos não são permitidas.");
   if (!u.hostname) throw new Error("URL sem domínio.");
   const hostname = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (["localhost", "localhost.localdomain", "localhost6"].includes(hostname)) throw new Error("Domínio local não permitido.");
@@ -201,7 +204,7 @@ async function curseForgeApiGet(pathname, params = {}) {
         proxy: false,
         timeout: 20000,
         params,
-        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.6" }
+        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.7" }
       });
       const value = response.data && response.data.data;
       if (cacheKey) {
@@ -226,10 +229,12 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   try { u = new URL(rawUrl); } catch { return rawUrl; }
   if (!CURSEFORGE_API_KEY || !isCurseForgeHost(u.hostname)) return rawUrl;
   const parts = u.pathname.split("/").filter(Boolean);
-  const modIndex = parts.indexOf("mc-mods");
+  const normalizedParts = parts.map(p => p.toLowerCase());
+  const modIndex = normalizedParts.indexOf("mc-mods");
   if (modIndex < 0 || !parts[modIndex + 1]) return rawUrl;
-  const slug = parts[modIndex + 1];
-  const downloadIndex = parts.indexOf("download") + 1;
+  let slug;
+  try { slug = decodeURIComponent(parts[modIndex + 1]); } catch { throw new Error("Slug do CurseForge inválido."); }
+  const downloadIndex = normalizedParts.indexOf("download", modIndex) + 1;
   const fileId = downloadIndex > 0 && /^\d+$/.test(parts[downloadIndex]) ? Number(parts[downloadIndex]) : null;
   const mod = await curseForgeApiGet("/mods/search", { gameId: CURSEFORGE_GAME_ID, slug, pageSize: 1 });
   const found = Array.isArray(mod) ? mod[0] : null;
@@ -316,7 +321,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.6" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.7" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -340,11 +345,14 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     }
   } else {
     if (kindIndex < 0 || !parts[kindIndex + 1]) return rawUrl;
-    const slug = decodeURIComponent(parts[kindIndex + 1]);
+    const kind = parts[kindIndex].toLowerCase();
+    if (kind !== "mod") throw new Error("O link do projeto Modrinth é do tipo " + kind + ". Use o link direto do arquivo para adicioná-lo ao diretório mods.");
+    let slug;
+    try { slug = decodeURIComponent(parts[kindIndex + 1]); } catch { throw new Error("Slug do Modrinth inválido."); }
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.6" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.7" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -375,7 +383,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.6" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.7" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -429,7 +437,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.6 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.7 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -440,7 +448,7 @@ async function requestFile(rawUrl, context = {}) {
         proxy: false,
         responseType: "stream",
         maxRedirects: 0,
-        timeout: 30000,
+        timeout: DOWNLOAD_TIMEOUT_MS,
         headers,
         httpAgent: checked.url.protocol === "http:" ? new http.Agent(agentOptions) : undefined,
         httpsAgent: checked.url.protocol === "https:" ? new https.Agent(agentOptions) : undefined,
@@ -554,7 +562,7 @@ function isRetryableDownloadError(err) {
   const status = Number(err && err.response && err.response.status || err && err.status || 0);
   if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
   const code = String(err && err.code || "").toUpperCase();
-  return ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "EINTEGRITY"].includes(code);
+  return ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "ENETRESET", "EPIPE", "ERR_STREAM_PREMATURE_CLOSE", "EINTEGRITY"].includes(code);
 }
 
 function canReserveDownloadBytes(committedBytes, reservedBytes, expectedBytes) {
@@ -639,7 +647,7 @@ const cleanupTimer = setInterval(async () => {
     }
   }
   for (const [id, job] of jobs) {
-    if (job.status === "running" || job.status === "zipping" || job.downloads) continue;
+    if (job.status === "running" || job.status === "zipping" || job.downloads || job.clients.size) continue;
     const lastTouch = Math.max(job.created, Number(job.lastAccess || 0));
     if (now - lastTouch > JOB_TTL_MS) {
       jobs.delete(id);
@@ -933,6 +941,8 @@ app.post("/api/build", async (req, res) => {
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   if (err instanceof multer.MulterError) {
+    const partialFiles = Array.isArray(req.files) ? req.files : [];
+    await Promise.all(partialFiles.map(f => f && f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
     const messages = {
       LIMIT_FILE_SIZE: "Um dos arquivos ultrapassa 150 MB.",
       LIMIT_FILE_COUNT: `Você pode enviar no máximo ${MAX_UPLOAD_FILES} arquivos por vez.`,
