@@ -309,6 +309,10 @@ function isModrinthHost(hostname) {
   return h === "modrinth.com" || h === "www.modrinth.com" || h.endsWith(".modrinth.com") || h === "cdn.modrinth.com" || h.endsWith(".cdn.modrinth.com");
 }
 
+function isClientCompatibleEnvironment(environment) {
+  return !["server_only", "dedicated_server_only", "server_only_client_optional"].includes(String(environment || "").toLowerCase());
+}
+
 function modrinthLoader(loader) {
   const map = {
     Forge: "forge",
@@ -329,6 +333,26 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   // O parâmetro mr_download_reason é usado pelo próprio Modrinth nas páginas
   // de download e evita que o CDN trate a requisição como uma navegação HTML.
   if (u.hostname.toLowerCase().includes("cdn.modrinth.com")) {
+    const directParts = u.pathname.split("/").filter(Boolean);
+    const versionsAt = directParts.findIndex(p => p.toLowerCase() === "versions");
+    if (versionsAt >= 0 && directParts[versionsAt + 1]) {
+      let directVersionId;
+      try { directVersionId = decodeURIComponent(directParts[versionsAt + 1]); } catch { throw new Error("ID de versão do Modrinth inválido."); }
+      const version = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(directVersionId), { timeout: 20000 }, "version:" + directVersionId);
+      if (selectedMinecraft && (!Array.isArray(version.game_versions) || !version.game_versions.includes(selectedMinecraft))) {
+        throw new Error("Incompatível: o arquivo do Modrinth não suporta Minecraft " + selectedMinecraft + ".");
+      }
+      if (loader && (!Array.isArray(version.loaders) || !version.loaders.includes(loader))) {
+        throw new Error("Incompatível: o arquivo do Modrinth não suporta " + selectedLoader + ".");
+      }
+      if (!isClientCompatibleEnvironment(version.environment)) throw new Error("Incompatível: a versão do Modrinth é destinada ao servidor.");
+      const files = Array.isArray(version.files) ? version.files.filter(f => f && !["sources-jar", "dev-jar", "javadoc-jar", "signature"].includes(String(f.file_type || "").toLowerCase())) : [];
+      const primary = files.find(f => f.primary) || files[0];
+      if (primary) {
+        context.expectedHashes = primary.hashes || null;
+        context.expectedSize = Number(primary.size || 0) || null;
+      }
+    }
     if (!u.searchParams.has("mr_download_reason")) {
       u.searchParams.set("mr_download_reason", "mikael-modpack-builder");
     }
@@ -351,7 +375,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.0" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -382,7 +406,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.0" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -413,7 +437,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.7" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.0" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -424,13 +448,15 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   }
 
   const candidates = Array.isArray(versions) ? versions.filter(v => v && v.status === "listed" && Array.isArray(v.files) && v.files.length) : [];
+  const clientCandidates = candidates.filter(v => isClientCompatibleEnvironment(v.environment));
+  if (!clientCandidates.length) throw new Error("Incompatível: o projeto Modrinth não possui uma versão para uso no cliente.");
   if (!candidates.length) {
     throw new Error("Incompatível: " + (projectData?.title || "este projeto") + " não possui uma versão publicada/listada para Minecraft " +
       (selectedMinecraft || "selecionado") + (loader ? " + " + selectedLoader : "") + ".");
   }
-  const selected = candidates.find(v => (!selectedMinecraft || v.game_versions?.includes(selectedMinecraft)) && (!loader || v.loaders?.includes(loader)))
-    || candidates.find(v => v.version_type === "release")
-    || candidates[0];
+  const selected = clientCandidates.find(v => (!selectedMinecraft || v.game_versions?.includes(selectedMinecraft)) && (!loader || v.loaders?.includes(loader)))
+    || clientCandidates.find(v => v.version_type === "release")
+    || clientCandidates[0];
 
   const usableFiles = selected.files.filter(f => f && !["sources-jar", "dev-jar", "javadoc-jar", "signature"].includes(String(f.file_type || "").toLowerCase()));
   const primary = usableFiles.find(f => f.primary) || usableFiles[0];
@@ -467,7 +493,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.7 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/5.0 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
