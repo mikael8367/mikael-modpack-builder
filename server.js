@@ -473,9 +473,15 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     throw new Error("Incompatível: " + (projectData?.title || "este projeto") + " não possui uma versão publicada/listada para Minecraft " +
       (selectedMinecraft || "selecionado") + (loader ? " + " + selectedLoader : "") + ".");
   }
-  const selected = clientCandidates.find(v => (!selectedMinecraft || v.game_versions?.includes(selectedMinecraft)) && (!loader || v.loaders?.includes(loader)))
-    || clientCandidates.find(v => v.version_type === "release")
-    || clientCandidates[0];
+  const compatibleCandidates = clientCandidates.filter(v =>
+    (!selectedMinecraft || (Array.isArray(v.game_versions) && v.game_versions.includes(selectedMinecraft))) &&
+    (!loader || (Array.isArray(v.loaders) && v.loaders.includes(loader)))
+  );
+  if (!compatibleCandidates.length) {
+    throw new Error("Incompatível: nenhuma versão do Modrinth corresponde exatamente a Minecraft " +
+      (selectedMinecraft || "selecionado") + (loader ? " + " + selectedLoader : "") + ".");
+  }
+  const selected = compatibleCandidates.find(v => v.version_type === "release") || compatibleCandidates[0];
 
   const usableFiles = selected.files.filter(f => f && !["sources-jar", "dev-jar", "javadoc-jar", "signature"].includes(String(f.file_type || "").toLowerCase()));
   const primary = usableFiles.find(f => f.primary) || usableFiles[0];
@@ -945,6 +951,10 @@ app.post("/api/build", async (req, res) => {
               await pipeline(response.data, fs.createWriteStream(target));
               if (bytes <= 0) throw new Error("O servidor retornou um arquivo vazio.");
               if (bytes > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
+              if (reservedForThis > 0) {
+                reservedBytes = Math.max(0, reservedBytes - reservedForThis);
+                reservedForThis = 0;
+              }
               if (context.expectedSize && bytes !== context.expectedSize) {
                 throw new Error("O tamanho baixado de " + filename + " não corresponde ao tamanho publicado.");
               }
