@@ -130,7 +130,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.2" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.3" }
   });
   return response.data && response.data.data;
 }
@@ -224,7 +224,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.2" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.3" }
       });
       const version = response.data;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -248,7 +248,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.2" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.3" }
       });
       projectData = project.data;
     } catch (err) {
@@ -279,7 +279,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.2" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.3" }
       });
       versions = response.data;
     } catch (err) {
@@ -329,7 +329,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.2 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.3 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -407,14 +407,26 @@ function uniqueName(name, used) {
 async function isZipArchive(filePath) {
   let handle;
   try {
+    const stat = await fsp.stat(filePath);
+    if (!stat.isFile() || stat.size < 22) return false;
     handle = await fsp.open(filePath, "r");
-    const header = Buffer.alloc(4);
-    const { bytesRead } = await handle.read(header, 0, 4, 0);
-    if (bytesRead < 4) return false;
-    return header[0] === 0x50 && header[1] === 0x4b &&
-      ((header[2] === 0x03 && header[3] === 0x04) ||
-       (header[2] === 0x05 && header[3] === 0x06) ||
-       (header[2] === 0x07 && header[3] === 0x08));
+    const head = Buffer.alloc(4);
+    const headRead = await handle.read(head, 0, 4, 0);
+    if (headRead.bytesRead < 4) return false;
+    const hasZipStart = head[0] === 0x50 && head[1] === 0x4b &&
+      ((head[2] === 0x03 && head[3] === 0x04) ||
+       (head[2] === 0x05 && head[3] === 0x06) ||
+       (head[2] === 0x07 && head[3] === 0x08));
+    if (!hasZipStart) return false;
+    const tailSize = Math.min(stat.size, 22 + 65535);
+    const tail = Buffer.alloc(tailSize);
+    const tailRead = await handle.read(tail, 0, tailSize, stat.size - tailSize);
+    if (tailRead.bytesRead < 22) return false;
+    const eocd = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
+    const zip64eocd = Buffer.from([0x50, 0x4b, 0x06, 0x06]);
+    return tail.lastIndexOf(eocd) >= 0 || tail.lastIndexOf(zip64eocd) >= 0;
+  } catch {
+    return false;
   } finally {
     if (handle) await handle.close().catch(() => {});
   }
@@ -802,5 +814,6 @@ module.exports = {
   validateArchiveFile,
   parseContentDispositionFilename,
   isRetryableDownloadError,
-  canReserveDownloadBytes
+  canReserveDownloadBytes,
+  jobs
 };
