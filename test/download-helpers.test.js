@@ -16,6 +16,7 @@ const {
   isRetryableDownloadError,
   canReserveDownloadBytes,
   retryAfterMs,
+  isClientCompatibleEnvironment,
   redactUrl,
   verifyFileIntegrity
 } = require("../server.js");
