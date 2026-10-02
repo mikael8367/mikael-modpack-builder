@@ -236,8 +236,8 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     : [];
   const selected = candidates.find(v => v.version_type === "release") || candidates[0];
   if (!selected) {
-    throw new Error("Nenhuma versão compatível do Modrinth foi encontrada para Minecraft " +
-      (context.minecraftVersion || "selecionado") + (loader ? " e " + context.modLoader : "") + ".");
+    throw new Error("Incompatível: " + String(projectData.title || slug) + " possui suporte ao projeto, mas não há uma versão publicada/listada para Minecraft " +
+      (context.minecraftVersion || "selecionado") + (loader ? " + " + context.modLoader : "") + ".");
   }
 
   const primary = selected.files.find(f => f.primary) || selected.files[0];
