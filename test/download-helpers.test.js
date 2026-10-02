@@ -221,3 +221,17 @@ test("empty ZIP archive is rejected", async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test("empty ZIP is not considered a usable mod archive", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-empty-"));
+  try {
+    const file = path.join(dir, "empty.zip");
+    const buf = Buffer.alloc(22);
+    buf.set([0x50, 0x4b, 0x05, 0x06], 0);
+    await fs.writeFile(file, buf);
+    assert.equal(await isZipArchive(file), false);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
