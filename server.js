@@ -389,7 +389,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.2" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.3" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -420,7 +420,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.2" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.3" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -451,7 +451,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.2" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.3" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -507,7 +507,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/5.2 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/5.3 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -563,9 +563,12 @@ async function requestFile(rawUrl, context = {}) {
 function safeFileName(name, index) {
   let n = (name || "").split("?")[0].split("#").pop().split("/").pop().trim();
   try { n = decodeURIComponent(n); } catch {}
-  n = n.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 180);
+  n = n.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/[ .]+$/g, "").slice(0, 180);
   if (!n || n === "." || n === "..") n = `mod_${index + 1}.jar`;
-  if (!/\.[a-z0-9]{1,8}$/i.test(n)) n += ".jar";
+  const dot = n.indexOf(".");
+  const stem = dot >= 0 ? n.slice(0, dot) : n;
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(stem)) n = "_" + n;
+  if (!/\.(jar|zip|litemod)$/i.test(n)) n += ".jar";
   return n;
 }
 
