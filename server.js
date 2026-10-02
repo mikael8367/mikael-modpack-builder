@@ -795,6 +795,7 @@ app.get("/api/mod-search", async (req, res) => {
       return res.json({
         source,
         results: hits.map(x => ({
+          source,
           id: x.project_id,
           slug: x.slug,
           title: x.title,
@@ -826,6 +827,7 @@ app.get("/api/mod-search", async (req, res) => {
       return res.json({
         source,
         results: hits.map(x => ({
+          source,
           id: Number(x.id),
           slug: x.slug || "",
           title: x.name || "Mod",
