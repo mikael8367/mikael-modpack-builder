@@ -1,6 +1,8 @@
 const express = require("express");
 const axios = require("axios");
-const archiver = require("archiver");
+const archiverModule = require("archiver");
+const archiver = typeof archiverModule === "function" ? archiverModule : (archiverModule && typeof archiverModule.default === "function" ? archiverModule.default : archiverModule && typeof archiverModule.create === "function" ? archiverModule.create : null);
+if (typeof archiver !== "function") throw new Error("A biblioteca archiver não exportou uma função compatível.");
 const path = require("path");
 const dns = require("dns").promises;
 const net = require("net");
@@ -122,7 +124,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.7" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.8" }
   });
   return response.data && response.data.data;
 }
@@ -210,7 +212,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.8" }
       });
       versions = [response.data];
     } catch (err) {
@@ -224,7 +226,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.8" }
       });
       projectData = project.data;
     } catch (err) {
@@ -255,7 +257,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.8" }
       });
       versions = response.data;
     } catch (err) {
@@ -301,7 +303,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/3.7 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/3.8 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
