@@ -48,7 +48,9 @@ test("ZIP/JAR signature is accepted and plain text is rejected", async () => {
   try {
     const good = path.join(dir, "good.jar");
     const bad = path.join(dir, "bad.jar");
-    await fs.writeFile(good, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]));
+    const emptyZip = Buffer.alloc(22);
+    emptyZip.set([0x50, 0x4b, 0x05, 0x06], 0);
+    await fs.writeFile(good, emptyZip);
     await fs.writeFile(bad, "not a jar");
     assert.equal(await isZipArchive(good), true);
     assert.equal(await isZipArchive(bad), false);
@@ -86,4 +88,43 @@ test("reserved/special-use addresses are blocked", () => {
   assert.equal(isPrivateIp("203.0.113.5"), true);
   assert.equal(isPrivateIp("224.0.0.1"), true);
   assert.equal(isPrivateIp("2001:db8::1"), true);
+});
+
+
+test("completed ZIP remains downloadable after a successful first download", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-download-test-"));
+  const id = "test-" + Date.now();
+  const zipPath = path.join(dir, "test.zip");
+  const zip = Buffer.alloc(22);
+  zip.set([0x50, 0x4b, 0x05, 0x06], 0);
+  await fs.writeFile(zipPath, zip);
+  const job = {
+    tempDir: dir,
+    zipPath,
+    zipName: "test.zip",
+    status: "done",
+    created: Date.now(),
+    lastAccess: Date.now(),
+    downloads: 0,
+    clients: new Set()
+  };
+  jobs.set(id, job);
+  const server = app.listen(0);
+  try {
+    const port = server.address().port;
+    const url = "http://127.0.0.1:" + port + "/api/build/" + id + "/download";
+    const first = await fetch(url);
+    assert.equal(first.status, 200);
+    const firstBytes = Buffer.from(await first.arrayBuffer());
+    assert.equal(firstBytes.length, 22);
+    const second = await fetch(url);
+    assert.equal(second.status, 200);
+    const secondBytes = Buffer.from(await second.arrayBuffer());
+    assert.deepEqual(secondBytes, firstBytes);
+    assert.equal(jobs.has(id), true);
+  } finally {
+    jobs.delete(id);
+    await new Promise(resolve => server.close(resolve));
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });
