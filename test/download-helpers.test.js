@@ -11,7 +11,8 @@ const {
   isZipArchive,
   validateArchiveFile,
   parseContentDispositionFilename,
-  isRetryableDownloadError
+  isRetryableDownloadError,
+  canReserveDownloadBytes
 } = require("../server.js");
 
 test("Content-Disposition filename parsing supports RFC 5987 and normal filename", () => {
@@ -69,4 +70,11 @@ test("transient HTTP and network errors are retryable", () => {
   assert.equal(isRetryableDownloadError({ response: { status: 503 } }), true);
   assert.equal(isRetryableDownloadError({ code: "ECONNRESET" }), true);
   assert.equal(isRetryableDownloadError({ response: { status: 404 } }), false);
+});
+
+
+test("download byte reservations prevent concurrent 500 MB overflow", () => {
+  assert.equal(canReserveDownloadBytes(200 * 1024 * 1024, 0, 250 * 1024 * 1024), true);
+  assert.equal(canReserveDownloadBytes(200 * 1024 * 1024, 100 * 1024 * 1024, 250 * 1024 * 1024), false);
+  assert.equal(canReserveDownloadBytes(0, 0, 151 * 1024 * 1024), false);
 });
