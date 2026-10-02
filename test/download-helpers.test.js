@@ -16,6 +16,7 @@ const {
   isRetryableDownloadError,
   canReserveDownloadBytes,
   retryAfterMs,
+  redactUrl,
   verifyFileIntegrity
 } = require("../server.js");
 
@@ -193,4 +194,10 @@ test("archive filenames avoid Windows reserved names and trailing dots", () => {
   assert.equal(safeFileName("mod.jar... ", 0), "mod.jar");
   assert.match(safeFileName("thing", 0), /\.jar$/i);
   assert.match(safeFileName("lite.litemod", 0), /\.litemod$/i);
+});
+
+
+test("manifest URL redaction removes query tokens", () => {
+  assert.equal(redactUrl("https://example.com/mod.jar?token=secret&utm_source=x"), "https://example.com/mod.jar");
+  assert.equal(redactUrl("not-a-url").length <= 500, true);
 });
