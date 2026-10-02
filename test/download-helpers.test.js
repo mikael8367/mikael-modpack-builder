@@ -186,3 +186,11 @@ test("client environment filter rejects server-only versions", () => {
   assert.equal(isClientCompatibleEnvironment("client_and_server"), true);
   assert.equal(isClientCompatibleEnvironment("client_only"), true);
 });
+
+
+test("archive filenames avoid Windows reserved names and trailing dots", () => {
+  assert.notEqual(safeFileName("CON.jar", 0).toUpperCase(), "CON.JAR");
+  assert.equal(safeFileName("mod.jar... ", 0), "mod.jar");
+  assert.match(safeFileName("thing", 0), /\.jar$/i);
+  assert.match(safeFileName("lite.litemod", 0), /\.litemod$/i);
+});
