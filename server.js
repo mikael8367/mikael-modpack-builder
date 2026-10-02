@@ -124,7 +124,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.9" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.0" }
   });
   return response.data && response.data.data;
 }
@@ -218,7 +218,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.0" }
       });
       const version = response.data;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -242,7 +242,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.0" }
       });
       projectData = project.data;
     } catch (err) {
@@ -273,7 +273,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.0" }
       });
       versions = response.data;
     } catch (err) {
@@ -323,7 +323,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/3.9 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.0 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -419,13 +419,13 @@ async function validateArchiveFile(filePath, filename) {
 
 function parseContentDispositionFilename(value) {
   const disposition = String(value || "");
-  const encoded = disposition.match(/filename\\*\\s*=\\s*UTF-8''([^;]+)/i);
+  const encoded = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
   if (encoded) {
     try { return decodeURIComponent(encoded[1].trim().replace(/^"(.*)"$/, "$1")); } catch {}
   }
-  const quoted = disposition.match(/filename\\s*=\\s*"([^"]+)"/i);
+  const quoted = disposition.match(/filename\s*=\s*"([^"]+)"/i);
   if (quoted) return quoted[1].trim();
-  const bare = disposition.match(/filename\\s*=\\s*([^;]+)/i);
+  const bare = disposition.match(/filename\s*=\s*([^;]+)/i);
   return bare ? bare[1].trim() : "";
 }
 
@@ -476,8 +476,9 @@ const cleanupTimer = setInterval(async () => {
     }
   }
   for (const [id, job] of jobs) {
+    if (job.status === "running" || job.status === "zipping" || job.downloads) continue;
     const lastTouch = Math.max(job.created, Number(job.lastAccess || 0));
-    if (!job.downloads && now - lastTouch > JOB_TTL_MS) {
+    if (now - lastTouch > JOB_TTL_MS) {
       jobs.delete(id);
       await fsp.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -757,4 +758,18 @@ app.use((err, req, res, next) => {
   return res.status(400).json({ error: err.message || "Falha na requisição." });
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log(`Mikael Modpack Builder em ${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", () => console.log(`Mikael Modpack Builder em ${PORT}`));
+}
+
+module.exports = {
+  app,
+  isPrivateIp,
+  validatePublicUrl,
+  safeFileName,
+  uniqueName,
+  isZipArchive,
+  validateArchiveFile,
+  parseContentDispositionFilename,
+  isRetryableDownloadError
+};
