@@ -11,6 +11,7 @@ const {
   isReleasedCurseForgeFile,
   MAX_UPLOAD_BODY_BYTES,
   jobs,
+  uploads,
   isPrivateIp,
   safeFileName,
   uniqueName,
@@ -275,4 +276,76 @@ test("unknown Modrinth loaders are not treated as compatible project loaders", (
   assert.equal(isKnownModrinthLoader("Fabric"), true);
   assert.equal(isKnownModrinthLoader("Outro"), false);
   assert.equal(isKnownModrinthLoader(""), false);
+});
+
+
+test("full local build pipeline creates a downloadable ZIP", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-full-build-"));
+  const source = path.join(dir, "Example Mod.jar");
+  const zipPath = path.join(dir, "source.zip");
+  const output = require("node:fs").createWriteStream(source);
+  await new Promise((resolve, reject) => {
+    const archive = archiver("zip", { store: true });
+    output.on("close", resolve);
+    output.on("error", reject);
+    archive.on("error", reject);
+    archive.pipe(output);
+    archive.append("hello", { name: "example.txt" });
+    archive.finalize();
+  });
+  const uploadDir = path.join(dir, "uploaded");
+  await fs.mkdir(uploadDir);
+  const uploadedFile = path.join(uploadDir, "Example Mod.jar");
+  await fs.copyFile(source, uploadedFile);
+  const uploadId = "test-upload-" + Date.now();
+  uploads.set(uploadId, {
+    dir: uploadDir,
+    files: [{ filename: "Example Mod.jar", path: uploadedFile }],
+    created: Date.now(),
+    lastAccess: Date.now(),
+    inUse: 0
+  });
+  const server = app.listen(0);
+  try {
+    const port = server.address().port;
+    const response = await fetch("http://127.0.0.1:" + port + "/api/build", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ minecraftVersion: "1.12.2", modLoader: "Forge", links: [], uploadId })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.ok(body.id);
+    let status;
+    for (let i = 0; i < 50; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      const sr = await fetch("http://127.0.0.1:" + port + "/api/build/" + encodeURIComponent(body.id) + "/status");
+      status = await sr.json();
+      if (status.status === "done" || status.status === "error") break;
+    }
+    assert.equal(status.status, "done", status.progress?.message || "build did not finish");
+    assert.ok(status.downloadUrl);
+    const download = await fetch("http://127.0.0.1:" + port + status.downloadUrl);
+    assert.equal(download.status, 200);
+    const data = Buffer.from(await download.arrayBuffer());
+    assert.ok(data.length > 100);
+    await new Promise((resolve, reject) => {
+      const p = path.join(dir, "downloaded.zip");
+      require("node:fs").writeFile(p, data, err => err ? reject(err) : resolve());
+    });
+    assert.equal(await isZipArchive(path.join(dir, "downloaded.zip")), true);
+  } finally {
+    const buildIds = [...jobs.keys()].filter(id => jobs.get(id)?.tempDir && String(jobs.get(id).tempDir).startsWith(os.tmpdir()));
+    for (const id of buildIds) {
+      const job = jobs.get(id);
+      if (job && job.status !== "running" && job.status !== "zipping") {
+        jobs.delete(id);
+        await fs.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+    uploads.delete(uploadId);
+    await fs.rm(uploadDir, { recursive: true, force: true }).catch(() => {});
+    await new Promise(resolve => server.close(resolve));
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });
