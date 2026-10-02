@@ -24,6 +24,8 @@ jobs:
           Path("/tmp/frontend.js").write_text(js, encoding="utf-8")
           PY
           node --check /tmp/frontend.js
+      - name: Download pipeline helper tests
+        run: node --test test/download-helpers.test.js
       - name: Smoke test server
         run: |
           node server.js > /tmp/server.log 2>&1 &
