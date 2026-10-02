@@ -445,10 +445,10 @@ app.post("/api/build", async (req, res) => {
         }
 
         const failures = [];
-        for (let i = 0; i < uniqueLinks.length; i++) {
+        let nextIndex = 0;
+        let completed = 0;
+        const downloadOne = async (i) => {
           const raw = uniqueLinks[i];
-          const current = files.length + failures.length + 1;
-          updateJob(job, { status: "downloading", current, filename: `Mod ${i + 1}`, percent: Math.round((current - 1) / Math.max(1, job.progress.total) * 85), message: `Baixando mod ${i + 1} de ${uniqueLinks.length}...` });
           try {
             const { response, url } = await requestFile(raw, { minecraftVersion, modLoader });
             const disposition = String(response.headers["content-disposition"] || "");
@@ -460,23 +460,41 @@ app.post("/api/build", async (req, res) => {
             let bytes = 0;
             const expected = Number(response.headers["content-length"] || 0);
             response.data.on("data", chunk => {
-              bytes += chunk.length; total += chunk.length;
+              bytes += chunk.length;
+              total += chunk.length;
               const filePercent = expected ? bytes / expected : 0;
-              const percent = Math.min(85, Math.round(((current - 1 + filePercent) / Math.max(1, job.progress.total)) * 85));
+              const percent = Math.min(85, Math.round(((completed + filePercent) / Math.max(1, uniqueLinks.length)) * 85));
               const elapsed = Math.max(0.1, (Date.now() - job.created) / 1000);
-              updateJob(job, { filename, percent, message: `Baixando ${filename} • ${i + 1}/${uniqueLinks.length}`, bytesPerSecond: Math.round(total / elapsed) });
+              updateJob(job, {
+                filename, percent,
+                message: `Baixando ${filename} • ${completed}/${uniqueLinks.length}`,
+                bytesPerSecond: Math.round(total / elapsed)
+              });
               if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) response.data.destroy(new Error("Limite de tamanho excedido."));
             });
             await pipeline(response.data, fs.createWriteStream(target));
             if (bytes > MAX_FILE_BYTES) throw new Error(`O arquivo ${filename} ultrapassa 150 MB.`);
             if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
             files.push({ filename, target, source: raw });
-            updateJob(job, { current: files.length + failures.length, percent: Math.min(85, Math.round((files.length + failures.length) / Math.max(1, job.progress.total) * 85)), message: `✓ ${filename} instalado` });
           } catch (e) {
             failures.push({ url: raw, error: e.message || "Falha no download." });
-            updateJob(job, { current: files.length + failures.length, message: `⚠️ Falhou: Mod ${i + 1}` });
+          } finally {
+            completed += 1;
+            updateJob(job, {
+              current: completed,
+              percent: Math.min(85, Math.round((completed / Math.max(1, uniqueLinks.length)) * 85)),
+              message: failures.length ? `Processando • ${completed}/${uniqueLinks.length} • ${failures.length} erro(s)` : `Processando • ${completed}/${uniqueLinks.length}`
+            });
           }
-        }
+        };
+        const workers = Array.from({ length: Math.min(3, Math.max(1, uniqueLinks.length)) }, async () => {
+          while (true) {
+            const i = nextIndex++;
+            if (i >= uniqueLinks.length) return;
+            await downloadOne(i);
+          }
+        });
+        await Promise.all(workers);
 
         updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
         const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
