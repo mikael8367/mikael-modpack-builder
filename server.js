@@ -140,36 +140,49 @@ async function modrinthApiGet(url, config = {}, cacheKey = "") {
   const now = Date.now();
   if (cacheKey && modrinthCache.has(cacheKey)) {
     const hit = modrinthCache.get(cacheKey);
-    if (hit.expires > now) return hit.value;
+    if (hit.expires > now) return hit.promise ? hit.promise : hit.value;
     modrinthCache.delete(cacheKey);
   }
-  while (Date.now() < modrinthNextRequestAt) await sleep(Math.max(1, modrinthNextRequestAt - Date.now()));
-  modrinthNextRequestAt = Date.now() + MODRINTH_MIN_REQUEST_INTERVAL_MS;
-  let lastError;
-  for (let retry = 0; retry < API_RETRIES; retry++) {
-    try {
-      const response = await axios.get(url, {
-        proxy: false,
-        timeout: 20000,
-        ...config,
-        headers: { Accept: "application/json", ...(config.headers || {}) }
-      });
-      const value = response.data;
-      if (cacheKey) {
-        if (modrinthCache.size >= API_CACHE_MAX_ENTRIES) modrinthCache.delete(modrinthCache.keys().next().value);
-        modrinthCache.set(cacheKey, { value, expires: Date.now() + MODRINTH_CACHE_TTL_MS });
+  const request = (async () => {
+    const current = Date.now();
+    const wait = Math.max(0, modrinthNextRequestAt - current);
+    modrinthNextRequestAt = Math.max(modrinthNextRequestAt, current) + MODRINTH_MIN_REQUEST_INTERVAL_MS;
+    if (wait) await sleep(wait);
+    let lastError;
+    for (let retry = 0; retry < API_RETRIES; retry++) {
+      try {
+        const response = await axios.get(url, {
+          proxy: false,
+          timeout: 20000,
+          ...config,
+          headers: { Accept: "application/json", ...(config.headers || {}) }
+        });
+        return response.data;
+      } catch (err) {
+        lastError = err;
+        const status = Number(err && err.response && err.response.status || 0);
+        if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
+        const retryAfter = Number(err.response?.headers?.["retry-after"] || 0);
+        if (retryAfter > 0) await sleep(Math.min(10000, retryAfter * 1000));
+        else await apiDelay(retry);
       }
+    }
+    throw lastError || new Error("Falha na API do Modrinth.");
+  })();
+  if (cacheKey) {
+    if (modrinthCache.size >= API_CACHE_MAX_ENTRIES) modrinthCache.delete(modrinthCache.keys().next().value);
+    const entry = { expires: Date.now() + MODRINTH_CACHE_TTL_MS, promise: request };
+    modrinthCache.set(cacheKey, entry);
+    try {
+      const value = await request;
+      modrinthCache.set(cacheKey, { expires: Date.now() + MODRINTH_CACHE_TTL_MS, value });
       return value;
     } catch (err) {
-      lastError = err;
-      const status = Number(err && err.response && err.response.status || 0);
-      if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
-      const retryAfter = Number(err.response?.headers?.["retry-after"] || 0);
-      if (retryAfter > 0) await sleep(Math.min(10000, retryAfter * 1000));
-      else await apiDelay(retry);
+      if (modrinthCache.get(cacheKey)?.promise === request) modrinthCache.delete(cacheKey);
+      throw err;
     }
   }
-  throw lastError || new Error("Falha na API do Modrinth.");
+  return request;
 }
 
 async function curseForgeApiGet(pathname, params = {}) {
@@ -303,7 +316,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.6" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -331,7 +344,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.6" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -360,10 +373,11 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     if (loader) params.set("loaders", JSON.stringify([loader]));
     params.set("include_changelog", "false");
     try {
-      const response = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
-      }, "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader);
+      const response = await modrinthApiGet(
+        "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.6" } },
+        "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
+      );
       versions = response;
     } catch (err) {
       const status = err && err.response && err.response.status;
@@ -415,7 +429,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.5 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.6 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
