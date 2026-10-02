@@ -15,6 +15,7 @@ const {
   parseContentDispositionFilename,
   isRetryableDownloadError,
   canReserveDownloadBytes,
+  retryAfterMs,
   verifyFileIntegrity
 } = require("../server.js");
 
@@ -167,4 +168,13 @@ test("download retry policy covers common transient stream errors", () => {
   assert.equal(isRetryableDownloadError({ code: "ERR_STREAM_PREMATURE_CLOSE" }), true);
   assert.equal(isRetryableDownloadError({ code: "EPIPE" }), true);
   assert.equal(isRetryableDownloadError({ response: { status: 404 } }), false);
+});
+
+
+test("Retry-After parser supports seconds and HTTP dates", () => {
+  assert.equal(retryAfterMs({"retry-after":"2"}), 2000);
+  const target = new Date(Date.now() + 1500).toUTCString();
+  const parsed = retryAfterMs({"retry-after":target});
+  assert.ok(parsed >= 0 && parsed <= 3000);
+  assert.equal(retryAfterMs({}), 0);
 });
