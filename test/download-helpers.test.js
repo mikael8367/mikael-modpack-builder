@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const archiver = require("archiver");
 
 const {
   app,
@@ -54,9 +55,16 @@ test("ZIP/JAR signature is accepted and plain text is rejected", async () => {
   try {
     const good = path.join(dir, "good.jar");
     const bad = path.join(dir, "bad.jar");
-    const emptyZip = Buffer.alloc(22);
-    emptyZip.set([0x50, 0x4b, 0x05, 0x06], 0);
-    await fs.writeFile(good, emptyZip);
+    await new Promise((resolve, reject) => {
+      const output = require("node:fs").createWriteStream(good);
+      const archive = archiver("zip", { store: true });
+      output.on("close", resolve);
+      output.on("error", reject);
+      archive.on("error", reject);
+      archive.pipe(output);
+      archive.append("valid mod placeholder", { name: "test.txt" });
+      archive.finalize();
+    });
     await fs.writeFile(bad, "not a jar");
     assert.equal(await isZipArchive(good), true);
     assert.equal(await isZipArchive(bad), false);
