@@ -122,7 +122,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.1" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.2" }
   });
   return response.data && response.data.data;
 }
@@ -163,8 +163,75 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   return String(selected.downloadUrl);
 }
 
+function isModrinthHost(hostname) {
+  const h = String(hostname || "").toLowerCase();
+  return h === "modrinth.com" || h.endsWith(".modrinth.com") || h === "cdn.modrinth.com" || h.endsWith(".cdn.modrinth.com");
+}
+
+function modrinthLoader(loader) {
+  const map = {
+    Forge: "forge",
+    Fabric: "fabric",
+    NeoForge: "neoforge",
+    Quilt: "quilt",
+    LiteLoader: "liteloader"
+  };
+  return map[String(loader || "")] || "";
+}
+
+async function resolveModrinthUrl(rawUrl, context = {}) {
+  let u;
+  try { u = new URL(rawUrl); } catch { return rawUrl; }
+  if (!isModrinthHost(u.hostname)) return rawUrl;
+
+  // Links diretos do CDN do Modrinth já apontam para o arquivo.
+  if (u.hostname.toLowerCase().includes("cdn.modrinth.com")) return rawUrl;
+
+  const parts = u.pathname.split("/").filter(Boolean);
+  const projectKinds = new Set(["mod", "plugin", "datapack", "resourcepack", "shader", "modpack"]);
+  const kindIndex = parts.findIndex(p => projectKinds.has(p.toLowerCase()));
+  if (kindIndex < 0 || !parts[kindIndex + 1]) return rawUrl;
+
+  const slug = parts[kindIndex + 1];
+  const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
+    proxy: false,
+    timeout: 20000,
+    headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.2" }
+  });
+  const projectData = project.data;
+  if (!projectData || !projectData.id) throw new Error("Projeto Modrinth não encontrado: " + slug);
+
+  const loader = modrinthLoader(context.modLoader);
+  const params = new URLSearchParams();
+  if (context.minecraftVersion) params.set("game_versions", JSON.stringify([String(context.minecraftVersion)]));
+  if (loader) params.set("loaders", JSON.stringify([loader]));
+  params.set("include_changelog", "false");
+
+  const versions = await axios.get(
+    "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
+    {
+      proxy: false,
+      timeout: 20000,
+      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.2" }
+    }
+  );
+
+  const candidates = Array.isArray(versions.data)
+    ? versions.data.filter(v => v && v.status === "listed" && Array.isArray(v.files) && v.files.length)
+    : [];
+  const selected = candidates.find(v => v.version_type === "release") || candidates[0];
+  if (!selected) {
+    throw new Error("Nenhuma versão compatível do Modrinth foi encontrada para Minecraft " +
+      (context.minecraftVersion || "selecionado") + (loader ? " e " + context.modLoader : "") + ".");
+  }
+
+  const primary = selected.files.find(f => f.primary) || selected.files[0];
+  if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo para download.");
+  return String(primary.url);
+}
+
 async function requestFile(rawUrl, context = {}) {
-  let current = await resolveCurseForgeUrl(rawUrl, context);
+  let current = await resolveCurseForgeUrl(rawUrl, context);\n  current = await resolveModrinthUrl(current, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const checked = await validatePublicUrl(current);
     const agentOptions = {
