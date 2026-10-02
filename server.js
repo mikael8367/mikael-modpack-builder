@@ -44,6 +44,32 @@ const http = require("http");
 const https = require("https");
 const multer = require("multer");
 const upload = multer({ dest: path.join(os.tmpdir(), "mikael-uploads-"), limits: { fileSize: MAX_FILE_BYTES, files: MAX_UPLOAD_FILES } });
+const MAX_UPLOAD_BODY_BYTES = MAX_TOTAL_BYTES + 8 * 1024 * 1024;
+
+function uploadBodyGuard(req, res, next) {
+  const declared = Number(req.headers["content-length"] || 0);
+  if (declared > MAX_UPLOAD_BODY_BYTES) {
+    return res.status(413).json({ error: "O upload excede o limite total de 500 MB." });
+  }
+  let seen = 0;
+  const onData = chunk => {
+    seen += chunk.length;
+    if (seen > MAX_UPLOAD_BODY_BYTES) {
+      req.destroy();
+    }
+  };
+  const cleanup = () => {
+    req.off("data", onData);
+    req.off("end", cleanup);
+    req.off("close", cleanup);
+    req.off("aborted", cleanup);
+  };
+  req.on("data", onData);
+  req.on("end", cleanup);
+  req.on("close", cleanup);
+  req.on("aborted", cleanup);
+  next();
+}
 
 async function cleanupOrphanedTempData() {
   const now = Date.now();
@@ -60,7 +86,7 @@ async function cleanupOrphanedTempData() {
 }
 
 cleanupOrphanedTempData().catch(() => {});
-app.post("/api/upload-files", upload.array("files"), async (req, res) => {
+app.post("/api/upload-files", uploadBodyGuard, upload.array("files"), async (req, res) => {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: "Nenhum arquivo foi enviado." });
   const uploadTotal = files.reduce((sum, f) => sum + Number(f.size || 0), 0);
