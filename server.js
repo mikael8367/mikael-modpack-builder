@@ -177,6 +177,14 @@ function isCurseForgeHost(hostname) {
   return h === "curseforge.com" || h.endsWith(".curseforge.com") || h === "forgecdn.net" || h.endsWith(".forgecdn.net");
 }
 
+function parseCurseForgeFileId(parts) {
+  const normalizedParts = parts.map(p => String(p).toLowerCase());
+  const markerIndex = normalizedParts.findIndex((part, index) => index > -1 && (part === "download" || part === "files"));
+  if (markerIndex < 0) return null;
+  const raw = parts[markerIndex + 1] || "";
+  return /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
 async function apiDelay(retry) {
   await sleep(API_RETRY_BASE_MS * Math.pow(2, retry));
 }
@@ -297,10 +305,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   if (modIndex < 0 || !parts[modIndex + 1]) return rawUrl;
   let slug;
   try { slug = decodeURIComponent(parts[modIndex + 1]); } catch { throw new Error("Slug do CurseForge inválido."); }
-  const fileMarkerIndex = normalizedParts.findIndex((part, index) => index > modIndex && (part === "download" || part === "files"));
-  const fileId = fileMarkerIndex >= 0 && /^\d+$/.test(parts[fileMarkerIndex + 1] || "")
-    ? Number(parts[fileMarkerIndex + 1])
-    : null;
+  const fileId = parseCurseForgeFileId(parts.slice(modIndex + 1));
   const mod = await curseForgeApiGet("/mods/search", { gameId: CURSEFORGE_GAME_ID, slug, pageSize: 1 });
   const found = Array.isArray(mod) ? mod[0] : null;
   if (!found || !found.id) throw new Error("Mod CurseForge não encontrado: " + slug);
@@ -1120,6 +1125,7 @@ module.exports = {
   MAX_UPLOAD_BODY_BYTES,
   app,
   isPrivateIp,
+  parseCurseForgeFileId,
   validatePublicUrl,
   safeFileName,
   uniqueName,
