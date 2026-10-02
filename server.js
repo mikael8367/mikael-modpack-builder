@@ -79,12 +79,18 @@ function isPrivateIp(ip) {
       (p[0] === 100 && p[1] >= 64 && p[1] <= 127) ||
       (p[0] === 169 && p[1] === 254) ||
       (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
-      (p[0] === 192 && (p[1] === 0 || p[1] === 168)) ||
-      (p[0] === 198 && p[1] >= 18 && p[1] <= 19);
+      (p[0] === 192 && p[1] === 0) ||
+      (p[0] === 192 && p[1] === 2) ||
+      (p[0] === 192 && p[1] === 168) ||
+      (p[0] === 198 && p[1] >= 18 && p[1] <= 19) ||
+      (p[0] === 198 && p[1] === 51 && p[2] === 100) ||
+      (p[0] === 203 && p[1] === 0 && p[2] === 113) ||
+      p[0] >= 224;
   }
   if (v === 6) {
     if (s === "::" || s === "::1") return true;
     if (s.startsWith("fc") || s.startsWith("fd") || /^fe[89ab]/.test(s) || s.startsWith("ff")) return true;
+    if (s.startsWith("2001:db8:")) return true;
     if (s.startsWith("::ffff:")) {
       const mapped = s.slice(7);
       if (net.isIP(mapped) === 4) return isPrivateIp(mapped);
@@ -108,7 +114,7 @@ async function validatePublicUrl(raw) {
   } else {
     const addresses = await dns.lookup(hostname, { all: true });
     if (!addresses.length || addresses.some(a => isPrivateIp(a.address))) throw new Error("O domínio aponta para um endereço privado/local.");
-    resolved = addresses[0];
+    resolved = addresses.find(a => Number(a.family) === 4) || addresses[0];
   }
   return { url: u, resolved };
 }
@@ -124,7 +130,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.1" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.2" }
   });
   return response.data && response.data.data;
 }
@@ -218,7 +224,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.1" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.2" }
       });
       const version = response.data;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -242,7 +248,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.1" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.2" }
       });
       projectData = project.data;
     } catch (err) {
@@ -273,7 +279,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.1" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.2" }
       });
       versions = response.data;
     } catch (err) {
@@ -323,7 +329,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.1 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.2 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -341,6 +347,9 @@ async function requestFile(rawUrl, context = {}) {
         validateStatus: s => (s >= 200 && s < 300) || [301,302,303,307,308].includes(s)
       });
     } catch (err) {
+      if (err && err.response && err.response.data && typeof err.response.data.destroy === "function") {
+        err.response.data.destroy();
+      }
       const status = err && err.response && err.response.status;
       if ((status === 401 || status === 403) && isCurseForgeHost(checked.url.hostname)) {
         throw new Error("CurseForge recusou o download (HTTP " + status + "). Configure uma CURSEFORGE_API_KEY válida no Render; desde 16/07/2026 a CDN do CurseForge exige autenticação para downloads automatizados.");
