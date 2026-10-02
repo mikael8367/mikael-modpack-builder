@@ -1014,7 +1014,7 @@ app.post("/api/build", async (req, res) => {
           files: orderedFiles.map(f => ({ file: f.filename, source: redactUrl(f.source), size: f.size || null })),
           failed: failures.map(f => ({ ...f, url: redactUrl(f.url) }))
         };
-        for (const file of orderedFiles) archive.file(file.target, { name: `mods/${file.filename}` });
+        for (const file of orderedFiles) archive.file(file.target, { name: `mods/${file.filename}`, store: true });
         archive.append(JSON.stringify(manifest, null, 2), { name: "mikael-modpack.json" });
         archive.append(JSON.stringify({
           minecraft: minecraftVersion, modLoader, modLoaderVersion: loaderVersion || null,
