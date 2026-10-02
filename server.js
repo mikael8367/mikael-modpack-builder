@@ -24,6 +24,8 @@ const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const UPLOAD_TTL_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 60 * 60 * 1000;
+const MAX_DOWNLOAD_RETRIES = 3;
+const RETRY_BASE_MS = 700;
 const MAX_UPLOAD_FILES = 999;
 const CURSEFORGE_API_KEY = String(process.env.CURSEFORGE_API_KEY || "").trim();
 const CURSEFORGE_API_BASE = "https://api.curseforge.com/v1";
@@ -122,7 +124,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.8" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.9" }
   });
   return response.data && response.data.data;
 }
@@ -141,7 +143,13 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   const found = Array.isArray(mod) ? mod[0] : null;
   if (!found || !found.id) throw new Error("Mod CurseForge não encontrado: " + slug);
   if (fileId) {
-    const downloadUrl = await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId + "/download-url");
+    const file = await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId);
+    if (!file || !file.id) throw new Error("Arquivo CurseForge " + fileId + " não foi encontrado.");
+    const wantedVersion = String(context.minecraftVersion || "").trim();
+    if (wantedVersion && (!Array.isArray(file.gameVersions) || !file.gameVersions.includes(wantedVersion))) {
+      throw new Error("Incompatível: o arquivo CurseForge " + fileId + " não suporta Minecraft " + wantedVersion + ".");
+    }
+    const downloadUrl = file.downloadUrl || await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId + "/download-url");
     if (!downloadUrl) throw new Error("Arquivo CurseForge " + fileId + " não possui URL de download.");
     return String(downloadUrl);
   }
@@ -210,9 +218,19 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.8" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.9" }
       });
-      versions = [response.data];
+      const version = response.data;
+      if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
+      if (version.status && version.status !== "listed") throw new Error("A versão do Modrinth " + versionId + " não está publicada/listada.");
+      if (selectedMinecraft && (!Array.isArray(version.game_versions) || !version.game_versions.includes(selectedMinecraft))) {
+        throw new Error("Incompatível: a versão do Modrinth " + versionId + " não suporta Minecraft " + selectedMinecraft + ".");
+      }
+      if (loader && (!Array.isArray(version.loaders) || !version.loaders.includes(loader))) {
+        throw new Error("Incompatível: a versão do Modrinth " + versionId + " não suporta " + selectedLoader + ".");
+      }
+      versions = [version];
+      projectData = { title: version.name || version.version_number || versionId };
     } catch (err) {
       const status = err && err.response && err.response.status;
       if (status === 404) throw new Error("Versão do Modrinth não encontrada: " + versionId);
@@ -224,7 +242,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.8" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.9" }
       });
       projectData = project.data;
     } catch (err) {
@@ -255,7 +273,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.8" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.9" }
       });
       versions = response.data;
     } catch (err) {
@@ -275,6 +293,10 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
 
   const primary = selected.files.find(f => f.primary) || selected.files[0];
   if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo para download.");
+  const selectedFilename = String(primary.filename || "").trim();
+  if (selectedFilename && !/\.(jar|zip)$/i.test(selectedFilename)) {
+    throw new Error("O arquivo principal do Modrinth (" + selectedFilename + ") não é um JAR/ZIP de mod.");
+  }
   try {
     const fileUrl = new URL(String(primary.url));
     if (fileUrl.hostname.toLowerCase().includes("cdn.modrinth.com") && !fileUrl.searchParams.has("mr_download_reason")) {
@@ -301,7 +323,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/3.8 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/3.9 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -373,6 +395,51 @@ function uniqueName(name, used) {
   return out;
 }
 
+async function isZipArchive(filePath) {
+  let handle;
+  try {
+    handle = await fsp.open(filePath, "r");
+    const header = Buffer.alloc(4);
+    const { bytesRead } = await handle.read(header, 0, 4, 0);
+    if (bytesRead < 4) return false;
+    return header[0] === 0x50 && header[1] === 0x4b &&
+      ((header[2] === 0x03 && header[3] === 0x04) ||
+       (header[2] === 0x05 && header[3] === 0x06) ||
+       (header[2] === 0x07 && header[3] === 0x08));
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
+}
+
+async function validateArchiveFile(filePath, filename) {
+  if (!(await isZipArchive(filePath))) {
+    throw new Error("O arquivo " + (filename || "baixado") + " não parece ser um JAR/ZIP válido.");
+  }
+}
+
+function parseContentDispositionFilename(value) {
+  const disposition = String(value || "");
+  const encoded = disposition.match(/filename\\*\\s*=\\s*UTF-8''([^;]+)/i);
+  if (encoded) {
+    try { return decodeURIComponent(encoded[1].trim().replace(/^"(.*)"$/, "$1")); } catch {}
+  }
+  const quoted = disposition.match(/filename\\s*=\\s*"([^"]+)"/i);
+  if (quoted) return quoted[1].trim();
+  const bare = disposition.match(/filename\\s*=\\s*([^;]+)/i);
+  return bare ? bare[1].trim() : "";
+}
+
+function isRetryableDownloadError(err) {
+  const status = Number(err && err.response && err.response.status || err && err.status || 0);
+  if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
+  const code = String(err && err.code || "").toUpperCase();
+  return ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH"].includes(code);
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 
 app.post("/api/validate-links", async (req, res) => {
   const minecraftVersion = String(req.body.minecraftVersion || "").trim();
@@ -409,7 +476,8 @@ const cleanupTimer = setInterval(async () => {
     }
   }
   for (const [id, job] of jobs) {
-    if (now - job.created > JOB_TTL_MS) {
+    const lastTouch = Math.max(job.created, Number(job.lastAccess || 0));
+    if (!job.downloads && now - lastTouch > JOB_TTL_MS) {
       jobs.delete(id);
       await fsp.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -423,6 +491,7 @@ app.get("/api/build/:id/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
   const send = () => res.write(`data: ${JSON.stringify(job.progress)}\n\n`);
   job.clients.add(res);
@@ -441,12 +510,19 @@ function updateJob(job, data) {
 app.get("/api/build/:id/download", (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job || job.status !== "done" || !job.zipPath) return res.status(404).json({ error: "ZIP ainda não está pronto." });
-  res.download(job.zipPath, job.zipName, async () => {
-    if (job.clients.size === 0) {
-      await fsp.rm(job.tempDir, { recursive: true, force: true }).catch(() => {});
-      jobs.delete(req.params.id);
-    }
-  });
+  job.lastAccess = Date.now();
+  job.downloads = Number(job.downloads || 0) + 1;
+  let released = false;
+  const release = err => {
+    if (released) return;
+    released = true;
+    job.downloads = Math.max(0, Number(job.downloads || 1) - 1);
+    job.lastAccess = Date.now();
+    if (err) job.lastDownloadError = String(err.message || err);
+  };
+  res.on("finish", () => release());
+  res.on("close", () => { if (!res.writableFinished) release(new Error("Download interrompido pelo cliente.")); });
+  res.download(job.zipPath, job.zipName, release);
 });
 
 app.post("/api/build", async (req, res) => {
@@ -471,7 +547,7 @@ app.post("/api/build", async (req, res) => {
   try {
     tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-modpack-"));
     const job = {
-      tempDir, zipPath: null, zipName: null, status: "running", created: Date.now(), clients: new Set(),
+      tempDir, zipPath: null, zipName: null, status: "running", created: Date.now(), lastAccess: Date.now(), downloads: 0, clients: new Set(),
       progress: { status: "starting", current: 0, total: uniqueLinks.length, percent: 0, filename: "", message: "Iniciando..." }
     };
     jobs.set(id, job);
