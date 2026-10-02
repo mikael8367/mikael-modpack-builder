@@ -207,3 +207,17 @@ test("manifest URL redaction removes query tokens", () => {
 test("LiteLoader file extension is preserved", () => {
   assert.equal(safeFileName("example.litemod", 0), "example.litemod");
 });
+
+
+test("empty ZIP archive is rejected", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-emptyzip-"));
+  try {
+    const emptyZip = path.join(dir, "empty.zip");
+    const buf = Buffer.alloc(22);
+    buf.set([0x50, 0x4b, 0x05, 0x06], 0);
+    await fs.writeFile(emptyZip, buf);
+    assert.equal(await isZipArchive(emptyZip), false);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
