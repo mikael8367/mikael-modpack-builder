@@ -235,7 +235,7 @@ async function curseForgeApiGet(pathname, params = {}) {
           proxy: false,
           timeout: 20000,
           params,
-          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.4" }
+          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.5" }
         });
         return response.data && response.data.data;
       } catch (err) {
@@ -879,9 +879,6 @@ app.post("/api/build", async (req, res) => {
               }
 
               const expected = Number(response.headers["content-length"] || context.expectedSize || 0);
-              if (context.expectedSize && expected && context.expectedSize !== expected) {
-                throw new Error("O tamanho publicado de " + filename + " não corresponde ao tamanho informado pelo servidor.");
-              }
               if (expected > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
               if (expected > 0) {
                 if (!canReserveDownloadBytes(total, reservedBytes, expected)) {
@@ -921,6 +918,9 @@ app.post("/api/build", async (req, res) => {
               await pipeline(response.data, fs.createWriteStream(target));
               if (bytes <= 0) throw new Error("O servidor retornou um arquivo vazio.");
               if (bytes > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
+              if (context.expectedSize && bytes !== context.expectedSize) {
+                throw new Error("O tamanho baixado de " + filename + " não corresponde ao tamanho publicado.");
+              }
               if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
               await validateArchiveFile(target, filename);
               await verifyFileIntegrity(target, context.expectedHashes, filename);
@@ -996,8 +996,11 @@ app.post("/api/build", async (req, res) => {
           output.on("close", resolve);
           output.on("error", reject);
           archive.on("error", reject);
+          archive.on("warning", err => {
+            if (err && err.code !== "ENOENT") reject(err);
+          });
           archive.pipe(output);
-          archive.finalize();
+          Promise.resolve(archive.finalize()).catch(reject);
         });
         const zipStat = await fsp.stat(zipPath);
         if (!zipStat.size) throw new Error("O ZIP gerado ficou vazio.");
