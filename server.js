@@ -68,10 +68,10 @@ app.post("/api/upload-files", upload.array("files"), async (req, res) => {
     await Promise.all(files.map(f => f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
     return res.status(400).json({ error: "Os arquivos selecionados ultrapassam 500 MB no total." });
   }
-  const invalid = files.filter(f => !/\.(jar|zip)$/i.test(f.originalname || ""));
+  const invalid = files.filter(f => !/\.(jar|zip|litemod)$/i.test(f.originalname || ""));
   if (invalid.length) {
     await Promise.all(files.map(f => f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
-    return res.status(400).json({ error: "Envie somente arquivos .jar ou .zip." });
+    return res.status(400).json({ error: "Envie somente arquivos .jar, .zip ou .litemod." });
   }
   const id = crypto.randomUUID();
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-local-"));
@@ -605,18 +605,23 @@ async function isZipArchive(filePath) {
     const head = Buffer.alloc(4);
     const headRead = await handle.read(head, 0, 4, 0);
     if (headRead.bytesRead < 4) return false;
-    const hasZipStart = head[0] === 0x50 && head[1] === 0x4b &&
-      ((head[2] === 0x03 && head[3] === 0x04) ||
-       (head[2] === 0x05 && head[3] === 0x06) ||
-       (head[2] === 0x07 && head[3] === 0x08));
-    if (!hasZipStart) return false;
+    const headSig = head.readUInt32LE(0);
+    const localFileSig = 0x04034b50;
+    const emptyOrEocdSig = 0x06054b50;
+    const zip64RecordSig = 0x06064b50;
+    if (![localFileSig, emptyOrEocdSig].includes(headSig) && headSig !== zip64RecordSig) return false;
     const tailSize = Math.min(stat.size, 22 + 65535);
     const tail = Buffer.alloc(tailSize);
     const tailRead = await handle.read(tail, 0, tailSize, stat.size - tailSize);
     if (tailRead.bytesRead < 22) return false;
     const eocd = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
-    const zip64eocd = Buffer.from([0x50, 0x4b, 0x06, 0x06]);
-    return tail.lastIndexOf(eocd) >= 0 || tail.lastIndexOf(zip64eocd) >= 0;
+    const eocdPos = tail.lastIndexOf(eocd);
+    if (eocdPos >= 0) {
+      if (eocdPos + 22 > tail.length) return false;
+      const totalEntries = tail.readUInt16LE(eocdPos + 10);
+      return totalEntries > 0;
+    }
+    return tail.lastIndexOf(Buffer.from([0x50, 0x4b, 0x06, 0x06])) >= 0 && stat.size >= 56;
   } catch {
     return false;
   } finally {
