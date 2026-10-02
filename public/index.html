@@ -5,10 +5,10 @@
 <title>Mikael Modpack Builder</title>
 <style>
 :root{color-scheme:dark;--bg:#080a0f;--card:#111621;--line:#273043;--text:#f5f7fb;--muted:#9aa6b8;--accent:#7c5cff;--good:#35d07f;--bad:#ff657a}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#17152a,#080a0f 55%);font-family:system-ui,Segoe UI,sans-serif;color:var(--text)}main{max-width:900px;margin:auto;padding:22px 14px 60px}.hero{padding:22px;border:1px solid var(--line);border-radius:24px;background:#0f131ddd;box-shadow:0 20px 70px #0008}h1{margin:0 0 7px;font-size:30px}.sub{color:var(--muted);line-height:1.5}.section{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:18px;background:#0b0f17}label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}select,input{width:100%;padding:13px;border-radius:11px;border:1px solid var(--line);background:#080b11;color:var(--text);outline:none}select:focus,input:focus{border-color:var(--accent)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.links{display:flex;flex-direction:column;gap:10px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}.remove{background:#25141a;color:#ff8797;border:1px solid #49222d;border-radius:10px;padding:0 14px;font-weight:800}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:12px;padding:13px 17px;font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#1a2230;color:#fff;border:1px solid var(--line)}.file-button{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.file-info{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#080b11}.file-info b{color:#fff}.progress-box{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:14px;background:#080b11}.progress-track{height:14px;background:#1a2230;border-radius:99px;overflow:hidden;margin:10px 0}.progress-bar{height:100%;width:0;background:var(--accent);transition:width .25s}.progress-text{font-size:13px}.progress-file{font-size:12px;color:var(--muted);word-break:break-all}.upload-progress{margin-top:10px}.upload-list{max-height:180px;overflow:auto;margin-top:8px}.upload-item{padding:7px 0;border-bottom:1px solid #202735;font-size:12px}.upload-item:last-child{border-bottom:0}.mod-list{margin:8px 0 0;padding-left:20px;color:var(--muted);max-height:220px;overflow:auto}.mod-list li{margin:3px 0}button:disabled{opacity:.5;cursor:not-allowed}.hint{color:var(--muted);font-size:12px;margin-top:8px}.site-version{display:inline-block;margin-bottom:10px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#111621;color:#bfb4ff;font-size:11px;font-weight:800}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#1a1730;color:#bfb4ff;font-size:12px;margin-top:10px}.tool-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0}.stat{padding:11px;border:1px solid var(--line);border-radius:12px;background:#080b11}.stat b{display:block;font-size:20px}.validation-results{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#080b11;max-height:300px;overflow:auto}.validation-item{padding:9px 11px;border-bottom:1px solid #202735;font-size:12px}.validation-item:last-child{border-bottom:0}.ok{color:var(--good)}.error{color:var(--bad)}.warn{color:#ffd166}.host{opacity:.75;margin-left:5px}.result-summary{margin-top:12px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#080b11}.progress-meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#17152a,#080a0f 55%);font-family:system-ui,Segoe UI,sans-serif;color:var(--text)}main{max-width:900px;margin:auto;padding:22px 14px 60px}.hero{padding:22px;border:1px solid var(--line);border-radius:24px;background:#0f131ddd;box-shadow:0 20px 70px #0008}h1{margin:0 0 7px;font-size:30px}.sub{color:var(--muted);line-height:1.5}.section{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:18px;background:#0b0f17}label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}select,input{width:100%;padding:13px;border-radius:11px;border:1px solid var(--line);background:#080b11;color:var(--text);outline:none}select:focus,input:focus{border-color:var(--accent)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.links{display:flex;flex-direction:column;gap:10px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}.remove{background:#25141a;color:#ff8797;border:1px solid #49222d;border-radius:10px;padding:0 14px;font-weight:800}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:12px;padding:13px 17px;font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#1a2230;color:#fff;border:1px solid var(--line)}.file-button{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.file-info{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#080b11}.file-info b{color:#fff}.progress-box{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:14px;background:#080b11}.progress-track{height:14px;background:#1a2230;border-radius:99px;overflow:hidden;margin:10px 0}.progress-bar{height:100%;width:0;background:var(--accent);transition:width .25s}.progress-text{font-size:13px}.progress-file{font-size:12px;color:var(--muted);word-break:break-all}.upload-progress{margin-top:10px}.upload-list{max-height:180px;overflow:auto;margin-top:8px}.upload-item{padding:7px 0;border-bottom:1px solid #202735;font-size:12px}.upload-item:last-child{border-bottom:0}.mod-list{margin:8px 0 0;padding-left:20px;color:var(--muted);max-height:220px;overflow:auto}.mod-list li{margin:3px 0}button:disabled{opacity:.5;cursor:not-allowed}.hint{color:var(--muted);font-size:12px;margin-top:8px}.site-version{display:inline-block;margin-bottom:10px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#111621;color:#bfb4ff;font-size:11px;font-weight:800}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#1a1730;color:#bfb4ff;font-size:12px;margin-top:10px}.tool-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0}.stat{padding:11px;border:1px solid var(--line);border-radius:12px;background:#080b11}.stat b{display:block;font-size:20px}.validation-results{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#080b11;max-height:300px;overflow:auto}.validation-item{padding:9px 11px;border-bottom:1px solid #202735;font-size:12px}.validation-item:last-child{border-bottom:0}.ok{color:var(--good)}.error{color:var(--bad)}.warn{color:#ffd166}.host{opacity:.75;margin-left:5px}.result-summary{margin-top:12px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#080b11}.progress-meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}.mod-modal{position:fixed;inset:0;z-index:50;background:#000b;display:flex;align-items:center;justify-content:center;padding:14px}.mod-panel{width:min(920px,100%);max-height:92vh;overflow:auto;background:#0b0f17;border:1px solid var(--line);border-radius:22px;box-shadow:0 25px 100px #000c;padding:18px}.mod-tabs{display:flex;gap:8px;margin:12px 0}.mod-tab{flex:1}.mod-tab.active{background:var(--accent)}.mod-search{display:grid;grid-template-columns:1fr auto;gap:8px}.mod-results{display:flex;flex-direction:column;gap:10px;margin-top:14px}.mod-card{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:14px;background:#080b11}.mod-card img{width:52px;height:52px;border-radius:10px;object-fit:cover;background:#111621}.mod-card-title{font-weight:800}.mod-card-desc{color:var(--muted);font-size:12px;line-height:1.35;margin-top:3px}.mod-card-meta{color:var(--muted);font-size:11px;margin-top:5px}.mod-version-row{grid-column:2/-1;display:grid;grid-template-columns:1fr auto;gap:8px}.mod-empty{padding:24px;text-align:center;color:var(--muted)}@media(max-width:650px){.mod-card{grid-template-columns:42px 1fr}.mod-card img{width:42px;height:42px}.mod-card>button{grid-column:1/-1}.mod-version-row{grid-column:1/-1}}
 </style></head>
 <body><main><section class="hero">
-<div class="site-version">SITE v7.5</div><h1>⚙️ Mikael Modpack Builder</h1>
+<div class="site-version">SITE v7.6</div><h1>⚙️ Mikael Modpack Builder</h1>
 <div class="sub">Escolha o Minecraft e o modloader, cole os links dos mods e baixe tudo em <b>um único ZIP</b>.</div>
 <div class="badge">Até 999999 links • até 150 MB por arquivo • 500 MB por pacote</div>
 
@@ -26,9 +26,9 @@
   <button class="secondary" id="copyLinks" type="button">📋 Copiar links</button>
 </div>
 <div id="linkStats" class="stats" hidden></div>
-<div id="validationResults" class="validation-results" hidden></div><div id="links" class="links"></div><div class="hint">Cole um link direto para o arquivo. Pode ser CurseForge, Modrinth, GitHub Releases, seu servidor ou outro endereço público. Links de projeto e versões do CurseForge são resolvidos quando a API Key está configurada; links de projeto, versões e arquivos do Modrinth são resolvidos automaticamente sem chave.</div><div class="actions"><button class="secondary" id="add" type="button">＋ Adicionar outro link</button><button class="secondary file-button" id="loadTxtBtn" type="button">📄 Carregar TXT</button><button class="secondary" id="saveTxt" type="button">💾 Salvar lista TXT</button><button class="secondary file-button" id="addFilesBtn" type="button">📦 Adicionar arquivos</button><input id="txtFile" type="file" accept=".txt,text/plain" class="file-input"><input id="modFiles" type="file" accept=".jar,.zip,.litemod,application/java-archive,application/zip" multiple class="file-input"></div><div id="fileInfo" class="file-info" hidden></div><div id="uploadProgress" class="progress-box" hidden><div class="progress-text" id="uploadText">Adicionando arquivos...</div><div class="progress-track"><div id="uploadBar" class="progress-bar"></div></div><div class="progress-file" id="uploadFile"></div><div id="uploadList" class="upload-list"></div></div><div class="hint">O TXT pode ter uma URL por linha. Linhas começando com # são ignoradas; também aceitamos texto como <code>Nome do mod = https://...</code>.</div></div>
+<div id="validationResults" class="validation-results" hidden></div><div id="links" class="links"></div><div class="hint">Cole um link direto para o arquivo. Pode ser CurseForge, Modrinth, GitHub Releases, seu servidor ou outro endereço público. Links de projeto e versões do CurseForge são resolvidos quando a API Key está configurada; links de projeto, versões e arquivos do Modrinth são resolvidos automaticamente sem chave.</div><div class="actions"><button class="secondary" id="add" type="button">＋ Adicionar outro link</button><button class="secondary file-button" id="loadTxtBtn" type="button">📄 Carregar TXT</button><button class="secondary" id="saveTxt" type="button">💾 Salvar lista TXT</button><button class="secondary file-button" id="addFilesBtn" type="button">📦 Adicionar arquivos</button><button class="primary" id="addModsBtn" type="button">➕ Adicionar mods</button><input id="txtFile" type="file" accept=".txt,text/plain" class="file-input"><input id="modFiles" type="file" accept=".jar,.zip,.litemod,application/java-archive,application/zip" multiple class="file-input"></div><div id="fileInfo" class="file-info" hidden></div><div id="uploadProgress" class="progress-box" hidden><div class="progress-text" id="uploadText">Adicionando arquivos...</div><div class="progress-track"><div id="uploadBar" class="progress-bar"></div></div><div class="progress-file" id="uploadFile"></div><div id="uploadList" class="upload-list"></div></div><div class="hint">O TXT pode ter uma URL por linha. Linhas começando com # são ignoradas; também aceitamos texto como <code>Nome do mod = https://...</code>.</div></div>
 
-<div class="actions"><button class="primary" id="build" type="button">⬇️ Baixar tudo em ZIP</button><button class="secondary" id="clear" type="button">🗑️ Limpar</button></div>
+<div id="modsModal" class="mod-modal" hidden><div class="mod-panel"><button class="secondary" id="closeMods" type="button" style="float:right">✕ Fechar</button><h2 style="margin:0">➕ Adicionar mods</h2><div class="hint">Pesquise mods compatíveis com o Minecraft e modloader selecionados. Depois escolha a versão exata do mod.</div><div class="mod-tabs"><button class="secondary mod-tab active" data-source="modrinth" type="button">🟢 Modrinth</button><button class="secondary mod-tab" data-source="curseforge" type="button">🟠 CurseForge</button></div><div class="mod-search"><input id="modSearchInput" type="search" placeholder="Ex.: JEI, AppleSkin, Iron Chests..."><button class="primary" id="modSearchBtn" type="button">🔎 Pesquisar</button></div><div class="hint" id="modSearchContext"></div><div id="modResults" class="mod-results"></div></div></div><div class="actions"><button class="primary" id="build" type="button">⬇️ Baixar tudo em ZIP</button><button class="secondary" id="clear" type="button">🗑️ Limpar</button></div>
 <div id="buildStats" class="stats" hidden></div><div id="buildDownload" class="result-summary" hidden></div><div id="progressBox" class="progress-box" hidden><div class="progress-meta"><span id="progressCount">0/0</span><span id="progressSpeed">--</span></div><div class="progress-text" id="progressText">Preparando...</div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div class="progress-file" id="progressFile"></div></div><div id="log">Adicione os links dos mods para começar.</div>
 </section></main>
 <script>
@@ -151,6 +151,91 @@ txtFile.addEventListener('change',e=>{
   reader.readAsText(file,'UTF-8');
 });
 
+
+const modsModal=document.getElementById('modsModal');
+const modSearchInput=document.getElementById('modSearchInput');
+const modSearchBtn=document.getElementById('modSearchBtn');
+const modResults=document.getElementById('modResults');
+const modSearchContext=document.getElementById('modSearchContext');
+let modSource='modrinth';
+let modSearchToken=0;
+
+function selectedModContext(){
+  return {minecraftVersion:document.getElementById('mc').value,modLoader:document.getElementById('loader').value};
+}
+function openMods(){
+  modsModal.hidden=false;
+  const c=selectedModContext();
+  modSearchContext.textContent='Filtro atual: Minecraft '+c.minecraftVersion+' • '+c.modLoader;
+  modResults.innerHTML='<div class="mod-empty">Digite o nome de um mod e pesquise.</div>';
+  modSearchInput.focus();
+}
+function closeMods(){modsModal.hidden=true;}
+function renderModResults(items){
+  if(!items.length){modResults.innerHTML='<div class="mod-empty">Nenhum mod encontrado para esses filtros.</div>';return;}
+  modResults.innerHTML=items.map((x,i)=>'<div class="mod-card" data-index="'+i+'">'+
+    (x.icon?'<img src="'+esc(x.icon)+'" alt="">':'<div style="width:52px;height:52px;border-radius:10px;background:#111621"></div>')+
+    '<div><div class="mod-card-title">'+esc(x.title)+'</div><div class="mod-card-desc">'+esc(x.description||'Sem descrição.')+'</div><div class="mod-card-meta">'+esc(x.source==='curseforge'?'CurseForge':'Modrinth')+' • '+Number(x.downloads||0).toLocaleString('pt-BR')+' downloads</div></div>'+
+    '<button class="secondary choose-version" type="button">⚙ Versões</button>'+
+    '<div class="mod-version-row" hidden><select class="mod-version"><option>Carregando versões...</option></select><button class="primary add-version" type="button">＋ Adicionar</button></div>'+
+  '</div>').join('');
+  items.forEach((x,i)=>{
+    const card=modResults.children[i];
+    card.querySelector('.choose-version').addEventListener('click',async()=>{
+      const row=card.querySelector('.mod-version-row');
+      const select=card.querySelector('.mod-version');
+      row.hidden=false; select.disabled=true; select.innerHTML='<option>Carregando versões...</option>';
+      try{
+        const c=selectedModContext();
+        const qs=new URLSearchParams({source:x.source,projectId:String(x.id),minecraftVersion:c.minecraftVersion,modLoader:c.modLoader});
+        const r=await fetch('/api/mod-versions?'+qs.toString(),{cache:'no-store'});
+        const j=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(j.error||'Não foi possível carregar as versões.');
+        const versions=Array.isArray(j.versions)?j.versions:[];
+        if(!versions.length)throw new Error('Nenhuma versão compatível encontrada.');
+        select.innerHTML=versions.map((v,n)=>'<option value="'+n+'">'+esc(v.name||v.versionNumber||v.id)+' • '+esc(v.type||'release')+(v.filename?' • '+esc(v.filename):'')+'</option>').join('');
+        select.disabled=false;
+        card.querySelector('.add-version').onclick=()=>{
+          const chosen=versions[Number(select.value)||0];
+          if(!chosen||!chosen.downloadUrl)return;
+          addLink(chosen.downloadUrl);
+          closeMods();
+          setLog('➕ '+(x.title||'Mod')+' adicionado • '+(chosen.name||chosen.versionNumber||'versão selecionada')+'.');
+        };
+      }catch(e){
+        select.disabled=true; select.innerHTML='<option>'+esc(e.message)+'</option>';
+      }
+    });
+  });
+}
+async function searchMods(){
+  const q=modSearchInput.value.trim();
+  if(!q){modResults.innerHTML='<div class="mod-empty">Digite o nome do mod.</div>';return;}
+  const token=++modSearchToken;
+  const c=selectedModContext();
+  modSearchContext.textContent='Pesquisando em '+(modSource==='curseforge'?'CurseForge':'Modrinth')+' • Minecraft '+c.minecraftVersion+' • '+c.modLoader+'...';
+  modSearchBtn.disabled=true; modResults.innerHTML='<div class="mod-empty">🔎 Pesquisando...</div>';
+  try{
+    const qs=new URLSearchParams({source:modSource,q,minecraftVersion:c.minecraftVersion,modLoader:c.modLoader});
+    const r=await fetch('/api/mod-search?'+qs.toString(),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(token!==modSearchToken)return;
+    if(!r.ok)throw new Error(j.error||'Falha na pesquisa.');
+    renderModResults(Array.isArray(j.results)?j.results:[]);
+    modSearchContext.textContent=(j.results?.length||0)+' resultado(s) • Minecraft '+c.minecraftVersion+' • '+c.modLoader;
+  }catch(e){modResults.innerHTML='<div class="mod-empty">❌ '+esc(e.message)+'</div>';}
+  finally{if(token===modSearchToken)modSearchBtn.disabled=false;}
+}
+document.getElementById('addModsBtn').addEventListener('click',openMods);
+document.getElementById('closeMods').addEventListener('click',closeMods);
+modsModal.addEventListener('click',e=>{if(e.target===modsModal)closeMods();});
+document.querySelectorAll('.mod-tab').forEach(tab=>tab.addEventListener('click',()=>{
+  document.querySelectorAll('.mod-tab').forEach(x=>x.classList.remove('active'));
+  tab.classList.add('active'); modSource=tab.dataset.source;
+  if(modSearchInput.value.trim())searchMods(); else modResults.innerHTML='<div class="mod-empty">Digite o nome de um mod e pesquise.</div>';
+}));
+modSearchBtn.addEventListener('click',searchMods);
+modSearchInput.addEventListener('keydown',e=>{if(e.key==='Enter')searchMods();});
 
 function hostOf(url){try{return new URL(url).hostname.replace(/^www\./,'');}catch{return 'link inválido';}}
 function updateStats(total,valid,invalid,duplicate=0){
