@@ -1115,6 +1115,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  MAX_UPLOAD_BODY_BYTES,
   app,
   isPrivateIp,
   validatePublicUrl,
