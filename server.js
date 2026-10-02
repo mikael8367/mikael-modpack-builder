@@ -122,7 +122,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.5" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.6" }
   });
   return response.data && response.data.data;
 }
@@ -165,7 +165,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
 
 function isModrinthHost(hostname) {
   const h = String(hostname || "").toLowerCase();
-  return h === "modrinth.com" || h.endsWith(".modrinth.com") || h === "cdn.modrinth.com" || h.endsWith(".cdn.modrinth.com");
+  return h === "modrinth.com" || h === "www.modrinth.com" || h.endsWith(".modrinth.com") || h === "cdn.modrinth.com" || h.endsWith(".cdn.modrinth.com");
 }
 
 function modrinthLoader(loader) {
@@ -197,55 +197,81 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   const parts = u.pathname.split("/").filter(Boolean);
   const projectKinds = new Set(["mod", "plugin", "datapack", "resourcepack", "shader", "modpack"]);
   const kindIndex = parts.findIndex(p => projectKinds.has(p.toLowerCase()));
-  if (kindIndex < 0 || !parts[kindIndex + 1]) return rawUrl;
-
-  const slug = parts[kindIndex + 1];
-  const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
-    proxy: false,
-    timeout: 20000,
-    headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.5" }
-  });
-  const projectData = project.data;
-  if (!projectData || !projectData.id) throw new Error("Projeto Modrinth não encontrado: " + slug);
+  const versionIndex = parts.findIndex(p => p.toLowerCase() === "version");
 
   const loader = modrinthLoader(context.modLoader);
   const selectedMinecraft = String(context.minecraftVersion || "").trim();
   const selectedLoader = String(context.modLoader || "").trim();
-  const supportedVersions = Array.isArray(projectData.game_versions) ? projectData.game_versions.map(String) : [];
-  const supportedLoaders = Array.isArray(projectData.loaders) ? projectData.loaders.map(String) : [];
-  const minecraftOk = !selectedMinecraft || supportedVersions.includes(selectedMinecraft);
-  const loaderOk = !loader || supportedLoaders.includes(loader);
-  if (!minecraftOk || !loaderOk) {
-    const reasons = [];
-    if (!minecraftOk) reasons.push("Minecraft " + selectedMinecraft + " não é suportado");
-    if (!loaderOk) reasons.push(selectedLoader + " não é suportado");
-    const details = [];
-    if (!minecraftOk && supportedVersions.length) details.push("versões disponíveis: " + supportedVersions.slice(0, 12).join(", ") + (supportedVersions.length > 12 ? "..." : ""));
-    if (!loaderOk && supportedLoaders.length) details.push("loaders disponíveis: " + supportedLoaders.join(", "));
-    throw new Error("Incompatível: " + String(projectData.title || slug) + " — " + reasons.join(" e ") + (details.length ? ". " + details.join("; ") : "."));
-  }
-  const params = new URLSearchParams();
-  if (context.minecraftVersion) params.set("game_versions", JSON.stringify([String(context.minecraftVersion)]));
-  if (loader) params.set("loaders", JSON.stringify([loader]));
-  params.set("include_changelog", "false");
+  let versions;
+  let projectData = null;
 
-  const versions = await axios.get(
-    "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-    {
-      proxy: false,
-      timeout: 20000,
-      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.5" }
+  if (versionIndex >= 0 && parts[versionIndex + 1]) {
+    const versionId = decodeURIComponent(parts[versionIndex + 1]);
+    try {
+      const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
+        proxy: false, timeout: 20000,
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.6" }
+      });
+      versions = [response.data];
+    } catch (err) {
+      const status = err && err.response && err.response.status;
+      if (status === 404) throw new Error("Versão do Modrinth não encontrada: " + versionId);
+      throw new Error("Não foi possível consultar a versão do Modrinth: HTTP " + (status || "erro"));
     }
-  );
+  } else {
+    if (kindIndex < 0 || !parts[kindIndex + 1]) return rawUrl;
+    const slug = decodeURIComponent(parts[kindIndex + 1]);
+    try {
+      const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
+        proxy: false, timeout: 20000,
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.6" }
+      });
+      projectData = project.data;
+    } catch (err) {
+      const status = err && err.response && err.response.status;
+      if (status === 404) throw new Error("Projeto Modrinth não encontrado: " + slug);
+      throw new Error("Não foi possível consultar o projeto Modrinth: HTTP " + (status || "erro"));
+    }
+    if (!projectData || !projectData.id) throw new Error("Projeto Modrinth não encontrado: " + slug);
 
-  const candidates = Array.isArray(versions.data)
-    ? versions.data.filter(v => v && v.status === "listed" && Array.isArray(v.files) && v.files.length)
-    : [];
-  const selected = candidates.find(v => v.version_type === "release") || candidates[0];
-  if (!selected) {
-    throw new Error("Incompatível: " + String(projectData.title || slug) + " possui suporte ao projeto, mas não há uma versão publicada/listada para Minecraft " +
-      (context.minecraftVersion || "selecionado") + (loader ? " + " + context.modLoader : "") + ".");
+    const supportedVersions = Array.isArray(projectData.game_versions) ? projectData.game_versions.map(String) : [];
+    const supportedLoaders = Array.isArray(projectData.loaders) ? projectData.loaders.map(String) : [];
+    const minecraftOk = !selectedMinecraft || supportedVersions.includes(selectedMinecraft);
+    const loaderOk = !loader || supportedLoaders.includes(loader);
+    if (!minecraftOk || !loaderOk) {
+      const reasons = [];
+      if (!minecraftOk) reasons.push("Minecraft " + selectedMinecraft + " não é suportado");
+      if (!loaderOk) reasons.push(selectedLoader + " não é suportado");
+      const details = [];
+      if (!minecraftOk && supportedVersions.length) details.push("versões disponíveis: " + supportedVersions.slice(0, 12).join(", ") + (supportedVersions.length > 12 ? "..." : ""));
+      if (!loaderOk && supportedLoaders.length) details.push("loaders disponíveis: " + supportedLoaders.join(", "));
+      throw new Error("Incompatível: " + String(projectData.title || slug) + " — " + reasons.join(" e ") + (details.length ? ". " + details.join("; ") : "."));
+    }
+
+    const params = new URLSearchParams();
+    if (selectedMinecraft) params.set("game_versions", JSON.stringify([selectedMinecraft]));
+    if (loader) params.set("loaders", JSON.stringify([loader]));
+    params.set("include_changelog", "false");
+    try {
+      const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
+        proxy: false, timeout: 20000,
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.6" }
+      });
+      versions = response.data;
+    } catch (err) {
+      const status = err && err.response && err.response.status;
+      throw new Error("Não foi possível consultar as versões do Modrinth: HTTP " + (status || "erro"));
+    }
   }
+
+  const candidates = Array.isArray(versions) ? versions.filter(v => v && v.status === "listed" && Array.isArray(v.files) && v.files.length) : [];
+  if (!candidates.length) {
+    throw new Error("Incompatível: " + (projectData?.title || "este projeto") + " não possui uma versão publicada/listada para Minecraft " +
+      (selectedMinecraft || "selecionado") + (loader ? " + " + selectedLoader : "") + ".");
+  }
+  const selected = candidates.find(v => (!selectedMinecraft || v.game_versions?.includes(selectedMinecraft)) && (!loader || v.loaders?.includes(loader)))
+    || candidates.find(v => v.version_type === "release")
+    || candidates[0];
 
   const primary = selected.files.find(f => f.primary) || selected.files[0];
   if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo para download.");
@@ -274,7 +300,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/3.5 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/3.6 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -311,7 +337,8 @@ async function requestFile(rawUrl, context = {}) {
       if (isModrinthDownload) {
         throw new Error("O CDN do Modrinth respondeu uma página HTML em vez do arquivo. O resolvedor foi atualizado; tente novamente com o link do projeto Modrinth.");
       }
-      throw new Error("O link não entregou um arquivo. Para CurseForge, use uma URL de download do arquivo ou configure CURSEFORGE_API_KEY para o resolvedor automático.");
+      if (isCurseForgeHost(checked.url.hostname)) throw new Error("O link do CurseForge não entregou um arquivo. Use uma URL de download do arquivo ou configure CURSEFORGE_API_KEY.");
+      throw new Error("O link não entregou um arquivo. O servidor esperava um .jar/.zip, mas recebeu HTML.");
     }
     const length = Number(response.headers["content-length"] || 0);
     if (length > MAX_FILE_BYTES) {
