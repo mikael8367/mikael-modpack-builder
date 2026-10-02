@@ -26,10 +26,18 @@ const UPLOAD_TTL_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 60 * 60 * 1000;
 const MAX_DOWNLOAD_RETRIES = 3;
 const RETRY_BASE_MS = 700;
+const API_RETRIES = 3;
+const API_RETRY_BASE_MS = 800;
+const MODRINTH_MIN_REQUEST_INTERVAL_MS = 200;
+const MODRINTH_CACHE_TTL_MS = 2 * 60 * 1000;
+const API_CACHE_MAX_ENTRIES = 2000;
 const MAX_UPLOAD_FILES = 999;
 const CURSEFORGE_API_KEY = String(process.env.CURSEFORGE_API_KEY || "").trim();
 const CURSEFORGE_API_BASE = "https://api.curseforge.com/v1";
 const CURSEFORGE_GAME_ID = 432;
+const modrinthCache = new Map();
+const curseForgeCache = new Map();
+let modrinthNextRequestAt = 0;
 
 const http = require("http");
 const https = require("https");
@@ -124,15 +132,80 @@ function isCurseForgeHost(hostname) {
   return h === "curseforge.com" || h.endsWith(".curseforge.com") || h === "forgecdn.net" || h.endsWith(".forgecdn.net");
 }
 
+async function apiDelay(retry) {
+  await sleep(API_RETRY_BASE_MS * Math.pow(2, retry));
+}
+
+async function modrinthApiGet(url, config = {}, cacheKey = "") {
+  const now = Date.now();
+  if (cacheKey && modrinthCache.has(cacheKey)) {
+    const hit = modrinthCache.get(cacheKey);
+    if (hit.expires > now) return hit.value;
+    modrinthCache.delete(cacheKey);
+  }
+  while (Date.now() < modrinthNextRequestAt) await sleep(Math.max(1, modrinthNextRequestAt - Date.now()));
+  modrinthNextRequestAt = Date.now() + MODRINTH_MIN_REQUEST_INTERVAL_MS;
+  let lastError;
+  for (let retry = 0; retry < API_RETRIES; retry++) {
+    try {
+      const response = await axios.get(url, {
+        proxy: false,
+        timeout: 20000,
+        ...config,
+        headers: { Accept: "application/json", ...(config.headers || {}) }
+      });
+      const value = response.data;
+      if (cacheKey) {
+        if (modrinthCache.size >= API_CACHE_MAX_ENTRIES) modrinthCache.delete(modrinthCache.keys().next().value);
+        modrinthCache.set(cacheKey, { value, expires: Date.now() + MODRINTH_CACHE_TTL_MS });
+      }
+      return value;
+    } catch (err) {
+      lastError = err;
+      const status = Number(err && err.response && err.response.status || 0);
+      if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
+      const retryAfter = Number(err.response?.headers?.["retry-after"] || 0);
+      if (retryAfter > 0) await sleep(Math.min(10000, retryAfter * 1000));
+      else await apiDelay(retry);
+    }
+  }
+  throw lastError || new Error("Falha na API do Modrinth.");
+}
+
 async function curseForgeApiGet(pathname, params = {}) {
   if (!CURSEFORGE_API_KEY) throw new Error("CurseForge agora exige uma API Key para downloads automatizados. Configure CURSEFORGE_API_KEY no Render.");
-  const response = await axios.get(CURSEFORGE_API_BASE + pathname, {
-    proxy: false,
-    timeout: 20000,
-    params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.5" }
-  });
-  return response.data && response.data.data;
+  const cacheKey = pathname + "?" + new URLSearchParams(Object.entries(params).map(([k,v]) => [k, String(v ?? "")])).toString();
+  const now = Date.now();
+  if (curseForgeCache.has(cacheKey)) {
+    const hit = curseForgeCache.get(cacheKey);
+    if (hit.expires > now) return hit.value;
+    curseForgeCache.delete(cacheKey);
+  }
+  let lastError;
+  for (let retry = 0; retry < API_RETRIES; retry++) {
+    try {
+      const response = await axios.get(CURSEFORGE_API_BASE + pathname, {
+        proxy: false,
+        timeout: 20000,
+        params,
+        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.6" }
+      });
+      const value = response.data && response.data.data;
+      if (cacheKey) {
+        if (curseForgeCache.size >= API_CACHE_MAX_ENTRIES) curseForgeCache.delete(curseForgeCache.keys().next().value);
+        curseForgeCache.set(cacheKey, { value, expires: Date.now() + MODRINTH_CACHE_TTL_MS });
+      }
+      return value;
+    } catch (err) {
+      lastError = err;
+      const status = Number(err && err.response && err.response.status || 0);
+      if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
+      const retryAfter = Number(err.response?.headers?.["retry-after"] || 0);
+      if (retryAfter > 0) await sleep(Math.min(10000, retryAfter * 1000));
+      else await apiDelay(retry);
+    }
+  }
+  throw lastError || new Error("Falha na API do CurseForge.");
 }
 
 async function resolveCurseForgeUrl(rawUrl, context = {}) {
@@ -228,11 +301,11 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   if (versionIndex >= 0 && parts[versionIndex + 1]) {
     const versionId = decodeURIComponent(parts[versionIndex + 1]);
     try {
-      const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
+      const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
         headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
-      });
-      const version = response.data;
+      }, "version:" + versionId);
+      const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
       if (version.status && version.status !== "listed") throw new Error("A versão do Modrinth " + versionId + " não está publicada/listada.");
       if (selectedMinecraft && (!Array.isArray(version.game_versions) || !version.game_versions.includes(selectedMinecraft))) {
@@ -256,11 +329,11 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     if (kindIndex < 0 || !parts[kindIndex + 1]) return rawUrl;
     const slug = decodeURIComponent(parts[kindIndex + 1]);
     try {
-      const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
+      const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
         headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
-      });
-      projectData = project.data;
+      }, "project:" + slug);
+      projectData = project;
     } catch (err) {
       const status = err && err.response && err.response.status;
       if (status === 404) throw new Error("Projeto Modrinth não encontrado: " + slug);
@@ -287,11 +360,11 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     if (loader) params.set("loaders", JSON.stringify([loader]));
     params.set("include_changelog", "false");
     try {
-      const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
+      const response = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
         proxy: false, timeout: 20000,
         headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
-      });
-      versions = response.data;
+      }, "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader);
+      versions = response;
     } catch (err) {
       const status = err && err.response && err.response.status;
       throw new Error("Não foi possível consultar as versões do Modrinth: HTTP " + (status || "erro"));
@@ -872,5 +945,7 @@ module.exports = {
   isRetryableDownloadError,
   canReserveDownloadBytes,
   verifyFileIntegrity,
-  jobs
+  jobs,
+  modrinthCache,
+  curseForgeCache
 };
