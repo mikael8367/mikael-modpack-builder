@@ -235,7 +235,7 @@ async function curseForgeApiGet(pathname, params = {}) {
           proxy: false,
           timeout: 20000,
           params,
-          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.5" }
+          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.6" }
         });
         return response.data && response.data.data;
       } catch (err) {
@@ -782,6 +782,20 @@ app.get("/api/build/:id/download", (req, res) => {
   res.on("finish", () => release());
   res.on("close", () => { if (!res.writableFinished) release(new Error("Download interrompido pelo cliente.")); });
   res.download(job.zipPath, job.zipName, release);
+});
+
+app.get("/api/build/:id/status", (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Build não encontrado ou expirado." });
+  job.lastAccess = Date.now();
+  res.json({
+    id: req.params.id,
+    status: job.status,
+    progress: job.progress,
+    failures: Array.isArray(job.progress?.failures) ? job.progress.failures : [],
+    zipName: job.zipName || null,
+    downloadUrl: job.status === "done" && job.zipPath ? "/api/build/" + encodeURIComponent(req.params.id) + "/download" : null
+  });
 });
 
 app.post("/api/build", async (req, res) => {
