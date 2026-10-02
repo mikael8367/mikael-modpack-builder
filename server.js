@@ -310,6 +310,31 @@ function uniqueName(name, used) {
   return out;
 }
 
+
+app.post("/api/validate-links", async (req, res) => {
+  const minecraftVersion = String(req.body.minecraftVersion || "").trim();
+  const modLoader = String(req.body.modLoader || "").trim();
+  const links = Array.isArray(req.body.links) ? [...new Set(req.body.links.map(x => String(x || "").trim()).filter(Boolean))] : [];
+  if (!minecraftVersion || !modLoader) return res.status(400).json({ error: "Informe Minecraft e modloader." });
+  if (links.length > MAX_LINKS) return res.status(400).json({ error: `Máximo de ${MAX_LINKS} links.` });
+  const results = [];
+  for (const raw of links) {
+    const item = { url: raw, name: raw, ok: false, message: "" };
+    try {
+      const resolved = await resolveCurseForgeUrl(raw, { minecraftVersion, modLoader });
+      const finalUrl = await resolveModrinthUrl(resolved, { minecraftVersion, modLoader });
+      const checked = await validatePublicUrl(finalUrl);
+      item.name = checked.url.pathname.split("/").pop() || checked.url.hostname;
+      item.ok = true;
+      item.message = `Disponível • ${checked.url.hostname}`;
+    } catch (e) {
+      item.message = e.message || "Link não pôde ser verificado.";
+    }
+    results.push(item);
+  }
+  res.json({ minecraftVersion, modLoader, results });
+});
+
 app.get("/api/status", (req, res) => res.json({ ok: true, maxLinks: MAX_LINKS, maxFileMB: MAX_FILE_BYTES / 1024 / 1024, maxTotalMB: MAX_TOTAL_BYTES / 1024 / 1024 }));
 
 const cleanupTimer = setInterval(async () => {
@@ -419,40 +444,38 @@ app.post("/api/build", async (req, res) => {
           }
         }
 
+        const failures = [];
         for (let i = 0; i < uniqueLinks.length; i++) {
           const raw = uniqueLinks[i];
-          const current = files.length + 1;
-          updateJob(job, {
-            status: "downloading", current, filename: `Mod ${i + 1}`,
-            percent: Math.round((current - 1) / Math.max(1, job.progress.total) * 85),
-            message: `Baixando mod ${i + 1} de ${uniqueLinks.length}...`
-          });
-          const { response, url } = await requestFile(raw, { minecraftVersion, modLoader });
-          const disposition = String(response.headers["content-disposition"] || "");
-          const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
-          const fromHeader = match ? match[1].trim() : "";
-          const used = new Set(files.map(f => f.filename.toLowerCase()));
-          const filename = uniqueName(safeFileName(fromHeader || url.pathname, i), used);
-          const target = path.join(tempDir, `${i}-${filename}`);
-          let bytes = 0;
-          const expected = Number(response.headers["content-length"] || 0);
-          response.data.on("data", chunk => {
-            bytes += chunk.length;
-            total += chunk.length;
-            const filePercent = expected ? bytes / expected : 0;
-            const percent = Math.min(85, Math.round(((current - 1 + filePercent) / Math.max(1, job.progress.total)) * 85));
-            updateJob(job, { filename, percent, message: `Baixando ${filename} • ${i + 1}/${uniqueLinks.length}` });
-            if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) response.data.destroy(new Error("Limite de tamanho excedido."));
-          });
-          await pipeline(response.data, fs.createWriteStream(target));
-          if (bytes > MAX_FILE_BYTES) throw new Error(`O arquivo ${filename} ultrapassa 150 MB.`);
-          if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
-          files.push({ filename, target, source: raw });
-          updateJob(job, {
-            current: files.length,
-            percent: Math.min(85, Math.round(files.length / Math.max(1, job.progress.total) * 85)),
-            message: `✓ ${filename} instalado`
-          });
+          const current = files.length + failures.length + 1;
+          updateJob(job, { status: "downloading", current, filename: `Mod ${i + 1}`, percent: Math.round((current - 1) / Math.max(1, job.progress.total) * 85), message: `Baixando mod ${i + 1} de ${uniqueLinks.length}...` });
+          try {
+            const { response, url } = await requestFile(raw, { minecraftVersion, modLoader });
+            const disposition = String(response.headers["content-disposition"] || "");
+            const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
+            const fromHeader = match ? match[1].trim() : "";
+            const used = new Set(files.map(f => f.filename.toLowerCase()));
+            const filename = uniqueName(safeFileName(fromHeader || url.pathname, i), used);
+            const target = path.join(tempDir, `${i}-${filename}`);
+            let bytes = 0;
+            const expected = Number(response.headers["content-length"] || 0);
+            response.data.on("data", chunk => {
+              bytes += chunk.length; total += chunk.length;
+              const filePercent = expected ? bytes / expected : 0;
+              const percent = Math.min(85, Math.round(((current - 1 + filePercent) / Math.max(1, job.progress.total)) * 85));
+              const elapsed = Math.max(0.1, (Date.now() - job.created) / 1000);
+              updateJob(job, { filename, percent, message: `Baixando ${filename} • ${i + 1}/${uniqueLinks.length}`, bytesPerSecond: Math.round(total / elapsed) });
+              if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) response.data.destroy(new Error("Limite de tamanho excedido."));
+            });
+            await pipeline(response.data, fs.createWriteStream(target));
+            if (bytes > MAX_FILE_BYTES) throw new Error(`O arquivo ${filename} ultrapassa 150 MB.`);
+            if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
+            files.push({ filename, target, source: raw });
+            updateJob(job, { current: files.length + failures.length, percent: Math.min(85, Math.round((files.length + failures.length) / Math.max(1, job.progress.total) * 85)), message: `✓ ${filename} instalado` });
+          } catch (e) {
+            failures.push({ url: raw, error: e.message || "Falha no download." });
+            updateJob(job, { current: files.length + failures.length, message: `⚠️ Falhou: Mod ${i + 1}` });
+          }
         }
 
         updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
@@ -464,7 +487,8 @@ app.post("/api/build", async (req, res) => {
         const manifest = {
           format: "mikael-modpack-links", version: 1, minecraft: minecraftVersion,
           modLoader, modLoaderVersion: loaderVersion || null,
-          files: files.map(f => ({ file: f.filename, source: f.source }))
+          files: files.map(f => ({ file: f.filename, source: f.source })),
+          failed: failures
         };
         for (const file of files) archive.file(file.target, { name: `mods/${file.filename}` });
         archive.append(JSON.stringify(manifest, null, 2), { name: "mikael-modpack.json" });
@@ -482,7 +506,7 @@ app.post("/api/build", async (req, res) => {
         job.zipPath = zipPath;
         job.zipName = zipName;
         job.status = "done";
-        updateJob(job, { status: "done", percent: 100, current: job.progress.total, message: "✅ Todos os mods foram instalados e o ZIP está pronto!" });
+        updateJob(job, { status: "done", percent: 100, current: job.progress.total, message: failures.length ? `⚠️ ZIP pronto: ${files.length} baixados, ${failures.length} com erro.` : "✅ Todos os mods foram instalados e o ZIP está pronto!", failures });
       } catch (e) {
         job.status = "error";
         updateJob(job, { status: "error", message: "❌ " + (e.message || "Não foi possível gerar o ZIP."), percent: 0 });
