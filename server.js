@@ -1001,6 +1001,7 @@ app.post("/api/build", async (req, res) => {
         await Promise.all(workers);
 
         if (!files.length) throw new Error("Nenhum arquivo válido pôde ser incluído no ZIP.");
+        const orderedFiles = [...files].sort((a, b) => String(a.filename).localeCompare(String(b.filename), "en", { sensitivity: "base" }) || String(a.source).localeCompare(String(b.source), "en"));
         updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
         const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
         const zipName = `Mikael_Modpack_${safeVersion}.zip`;
@@ -1010,10 +1011,10 @@ app.post("/api/build", async (req, res) => {
         const manifest = {
           format: "mikael-modpack-links", version: 1, minecraft: minecraftVersion,
           modLoader, modLoaderVersion: loaderVersion || null,
-          files: files.map(f => ({ file: f.filename, source: redactUrl(f.source), size: f.size || null })),
+          files: orderedFiles.map(f => ({ file: f.filename, source: redactUrl(f.source), size: f.size || null })),
           failed: failures.map(f => ({ ...f, url: redactUrl(f.url) }))
         };
-        for (const file of files) archive.file(file.target, { name: `mods/${file.filename}` });
+        for (const file of orderedFiles) archive.file(file.target, { name: `mods/${file.filename}` });
         archive.append(JSON.stringify(manifest, null, 2), { name: "mikael-modpack.json" });
         archive.append(JSON.stringify({
           minecraft: minecraftVersion, modLoader, modLoaderVersion: loaderVersion || null,
