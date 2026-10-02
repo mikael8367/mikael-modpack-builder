@@ -242,7 +242,7 @@ function renderModResults(items){
       const timer=setTimeout(()=>controller.abort(),15000);
       try{
         const c=selectedModContext();
-        const resultSource=String(x.source||modSource||'modrinth').toLowerCase(); const qs=new URLSearchParams({source:resultSource,projectId:String(x.id),minecraftVersion:c.minecraftVersion,modLoader:c.modLoader});
+        const rawResultSource=String(x.source||'').trim().toLowerCase(); const resultSource=(rawResultSource==='modrinth'||rawResultSource==='curseforge')?rawResultSource:(String(modSource||'modrinth').trim().toLowerCase()==='curseforge'?'curseforge':'modrinth'); const qs=new URLSearchParams({source:resultSource,projectId:String(x.id),minecraftVersion:c.minecraftVersion,modLoader:c.modLoader});
         const r=await fetch('/api/mod-versions?'+qs.toString(),{cache:'no-store',signal:controller.signal});
         const j=await r.json().catch(()=>({}));
         if(!r.ok)throw new Error(j.error||'Não foi possível carregar as versões.');
