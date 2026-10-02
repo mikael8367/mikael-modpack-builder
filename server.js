@@ -297,8 +297,10 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   if (modIndex < 0 || !parts[modIndex + 1]) return rawUrl;
   let slug;
   try { slug = decodeURIComponent(parts[modIndex + 1]); } catch { throw new Error("Slug do CurseForge inválido."); }
-  const downloadIndex = normalizedParts.indexOf("download", modIndex) + 1;
-  const fileId = downloadIndex > 0 && /^\d+$/.test(parts[downloadIndex]) ? Number(parts[downloadIndex]) : null;
+  const fileMarkerIndex = normalizedParts.findIndex((part, index) => index > modIndex && (part === "download" || part === "files"));
+  const fileId = fileMarkerIndex >= 0 && /^\d+$/.test(parts[fileMarkerIndex + 1] || "")
+    ? Number(parts[fileMarkerIndex + 1])
+    : null;
   const mod = await curseForgeApiGet("/mods/search", { gameId: CURSEFORGE_GAME_ID, slug, pageSize: 1 });
   const found = Array.isArray(mod) ? mod[0] : null;
   if (!found || !found.id) throw new Error("Mod CurseForge não encontrado: " + slug);
