@@ -21,6 +21,7 @@ const {
   canReserveDownloadBytes,
   retryAfterMs,
   isClientCompatibleEnvironment,
+  isKnownModrinthLoader,
   redactUrl,
   verifyFileIntegrity
 } = require("../server.js");
@@ -266,4 +267,12 @@ test("CurseForge file status filter accepts only released non-server files", () 
   assert.equal(isReleasedCurseForgeFile({ isAvailable: true, fileStatus: 9, isServerPack: false }), false);
   assert.equal(isReleasedCurseForgeFile({ isAvailable: true, fileStatus: 10, isServerPack: true }), false);
   assert.equal(isReleasedCurseForgeFile({ isAvailable: false, fileStatus: 10, isServerPack: false }), false);
+});
+
+
+test("unknown Modrinth loaders are not treated as compatible project loaders", () => {
+  assert.equal(isKnownModrinthLoader("Forge"), true);
+  assert.equal(isKnownModrinthLoader("Fabric"), true);
+  assert.equal(isKnownModrinthLoader("Outro"), false);
+  assert.equal(isKnownModrinthLoader(""), false);
 });
