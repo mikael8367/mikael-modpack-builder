@@ -122,7 +122,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.2" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.4" }
   });
   return response.data && response.data.data;
 }
@@ -202,6 +202,21 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   if (!projectData || !projectData.id) throw new Error("Projeto Modrinth não encontrado: " + slug);
 
   const loader = modrinthLoader(context.modLoader);
+  const selectedMinecraft = String(context.minecraftVersion || "").trim();
+  const selectedLoader = String(context.modLoader || "").trim();
+  const supportedVersions = Array.isArray(projectData.game_versions) ? projectData.game_versions.map(String) : [];
+  const supportedLoaders = Array.isArray(projectData.loaders) ? projectData.loaders.map(String) : [];
+  const minecraftOk = !selectedMinecraft || supportedVersions.includes(selectedMinecraft);
+  const loaderOk = !loader || supportedLoaders.includes(loader);
+  if (!minecraftOk || !loaderOk) {
+    const reasons = [];
+    if (!minecraftOk) reasons.push("Minecraft " + selectedMinecraft + " não é suportado");
+    if (!loaderOk) reasons.push(selectedLoader + " não é suportado");
+    const details = [];
+    if (!minecraftOk && supportedVersions.length) details.push("versões disponíveis: " + supportedVersions.slice(0, 12).join(", ") + (supportedVersions.length > 12 ? "..." : ""));
+    if (!loaderOk && supportedLoaders.length) details.push("loaders disponíveis: " + supportedLoaders.join(", "));
+    throw new Error("Incompatível: " + String(projectData.title || slug) + " — " + reasons.join(" e ") + (details.length ? ". " + details.join("; ") : "."));
+  }
   const params = new URLSearchParams();
   if (context.minecraftVersion) params.set("game_versions", JSON.stringify([String(context.minecraftVersion)]));
   if (loader) params.set("loaders", JSON.stringify([loader]));
