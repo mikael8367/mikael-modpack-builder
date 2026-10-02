@@ -1,8 +1,6 @@
 const express = require("express");
 const axios = require("axios");
-const archiverModule = require("archiver");
-const archiver = typeof archiverModule === "function" ? archiverModule : (archiverModule && typeof archiverModule.default === "function" ? archiverModule.default : archiverModule && typeof archiverModule.create === "function" ? archiverModule.create : null);
-if (typeof archiver !== "function") throw new Error("A biblioteca archiver não exportou uma função compatível.");
+const archiver = require("archiver");
 const path = require("path");
 const dns = require("dns").promises;
 const net = require("net");
