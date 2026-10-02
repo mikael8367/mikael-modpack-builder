@@ -235,7 +235,7 @@ async function curseForgeApiGet(pathname, params = {}) {
           proxy: false,
           timeout: 20000,
           params,
-          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.6" }
+          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.7" }
         });
         return response.data && response.data.data;
       } catch (err) {
@@ -293,6 +293,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   }
   const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
   const loaderType = loaderMap[String(context.modLoader || "")];
+  if (!loaderType) throw new Error("Para links de projeto do CurseForge, selecione um modloader conhecido ou use uma URL direta do arquivo.");
   const files = await curseForgeApiGet("/mods/" + found.id + "/files", {
     gameVersion: String(context.minecraftVersion || ""),
     modLoaderType: loaderType,
@@ -396,7 +397,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.3" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.7" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -427,7 +428,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.3" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.7" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -458,7 +459,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.3" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.7" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -514,7 +515,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/5.3 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/5.7 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -653,6 +654,15 @@ function canReserveDownloadBytes(committedBytes, reservedBytes, expectedBytes) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function redactUrl(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl));
+    return u.origin + u.pathname;
+  } catch {
+    return String(rawUrl || "").slice(0, 500);
+  }
 }
 
 async function verifyFileIntegrity(filePath, hashes, filename) {
@@ -997,8 +1007,8 @@ app.post("/api/build", async (req, res) => {
         const manifest = {
           format: "mikael-modpack-links", version: 1, minecraft: minecraftVersion,
           modLoader, modLoaderVersion: loaderVersion || null,
-          files: files.map(f => ({ file: f.filename, source: f.source, size: f.size || null })),
-          failed: failures
+          files: files.map(f => ({ file: f.filename, source: redactUrl(f.source), size: f.size || null })),
+          failed: failures.map(f => ({ ...f, url: redactUrl(f.url) }))
         };
         for (const file of files) archive.file(file.target, { name: `mods/${file.filename}` });
         archive.append(JSON.stringify(manifest, null, 2), { name: "mikael-modpack.json" });
@@ -1010,9 +1020,7 @@ app.post("/api/build", async (req, res) => {
           output.on("close", resolve);
           output.on("error", reject);
           archive.on("error", reject);
-          archive.on("warning", err => {
-            if (err && err.code !== "ENOENT") reject(err);
-          });
+          archive.on("warning", reject);
           archive.pipe(output);
           Promise.resolve(archive.finalize()).catch(reject);
         });
