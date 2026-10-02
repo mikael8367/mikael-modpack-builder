@@ -185,6 +185,13 @@ function parseCurseForgeFileId(parts) {
   return /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
+function isReleasedCurseForgeFile(file) {
+  return !!file &&
+    file.isAvailable !== false &&
+    Number(file.fileStatus) === 10 &&
+    file.isServerPack !== true;
+}
+
 async function apiDelay(retry) {
   await sleep(API_RETRY_BASE_MS * Math.pow(2, retry));
 }
@@ -312,7 +319,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   if (fileId) {
     const file = await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId);
     if (!file || !file.id) throw new Error("Arquivo CurseForge " + fileId + " não foi encontrado.");
-    if (file.isAvailable === false || [7, 8, 9].includes(Number(file.fileStatus))) throw new Error("O arquivo CurseForge " + fileId + " não está disponível para download.");
+    if (!isReleasedCurseForgeFile(file)) throw new Error("O arquivo CurseForge " + fileId + " não está liberado para download.");
     const wantedVersion = String(context.minecraftVersion || "").trim();
     if (wantedVersion && (!Array.isArray(file.gameVersions) || !file.gameVersions.includes(wantedVersion))) {
       throw new Error("Incompatível: o arquivo CurseForge " + fileId + " não suporta Minecraft " + wantedVersion + ".");
@@ -335,9 +342,9 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
     sortOrder: "desc"
   });
   const candidates = Array.isArray(files)
-    ? files.filter(f => f && f.isAvailable !== false && ![7, 8, 9].includes(Number(f.fileStatus)) && Array.isArray(f.gameVersions) && f.gameVersions.includes(String(context.minecraftVersion || "")))
+    ? files.filter(f => isReleasedCurseForgeFile(f) && Array.isArray(f.gameVersions) && f.gameVersions.includes(String(context.minecraftVersion || "")))
     : [];
-  const usable = candidates.filter(f => f && f.isServerPack !== true);
+  const usable = candidates.filter(isReleasedCurseForgeFile);
   const selected = usable.find(f => Number(f.releaseType) === 1) || usable[0];
   if (!selected) throw new Error("Nenhum arquivo de mod compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
   context.expectedHashes = selected.hashes || null;
@@ -1126,6 +1133,7 @@ module.exports = {
   app,
   isPrivateIp,
   parseCurseForgeFileId,
+  isReleasedCurseForgeFile,
   validatePublicUrl,
   safeFileName,
   uniqueName,
