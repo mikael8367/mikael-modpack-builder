@@ -235,7 +235,7 @@ async function curseForgeApiGet(pathname, params = {}) {
           proxy: false,
           timeout: 20000,
           params,
-          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.9" }
+          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/6.0" }
         });
         return response.data && response.data.data;
       } catch (err) {
@@ -397,7 +397,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/6.0" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -428,7 +428,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/6.0" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -459,7 +459,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/5.9" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/6.0" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -515,7 +515,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/5.9 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/6.0 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -771,8 +771,13 @@ function updateJob(job, data) {
     if (Number.isFinite(Number(previous.total))) merged.total = Math.max(Number(previous.total), Number(merged.total || 0));
   }
   job.progress = merged;
-  for (const client of job.clients) {
-    try { client.write(`data: ${JSON.stringify(job.progress)}\n\n`); } catch {}
+  const terminal = merged.status === "done" || merged.status === "error";
+  for (const client of [...job.clients]) {
+    try {
+      client.write(`data: ${JSON.stringify(job.progress)}\n\n`);
+      if (terminal) client.end();
+    } catch {}
+    if (terminal) job.clients.delete(client);
   }
 }
 
