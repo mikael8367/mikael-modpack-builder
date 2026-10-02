@@ -7,6 +7,7 @@ const archiver = require("archiver");
 
 const {
   app,
+  MAX_UPLOAD_BODY_BYTES,
   jobs,
   isPrivateIp,
   safeFileName,
