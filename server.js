@@ -278,7 +278,11 @@ async function curseForgeApiGet(pathname, params = {}) {
           params,
           headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/7.6" }
         });
-        return response.data && response.data.data;
+        const payload = response.data && response.data.data;
+        if (Array.isArray(payload) && response.data?.pagination) {
+          Object.defineProperty(payload, "__pagination", { value: response.data.pagination, enumerable: false, configurable: true });
+        }
+        return payload;
       } catch (err) {
         lastError = err;
         const status = Number(err && err.response && err.response.status || 0);
@@ -830,7 +834,7 @@ app.get("/api/mod-search", async (req, res) => {
           downloads: Number(x.downloadCount || 0),
           url: x.links?.websiteUrl || ("https://www.curseforge.com/minecraft/mc-mods/" + encodeURIComponent(x.slug || x.id))
         })),
-        total: hits.length
+        total: Number(data?.__pagination?.totalCount || hits.length)
       });
     }
     return res.status(400).json({ error: "Fonte de mods inválida. Use Modrinth ou CurseForge." });
