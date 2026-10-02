@@ -5,10 +5,10 @@
 <title>Mikael Modpack Builder</title>
 <style>
 :root{color-scheme:dark;--bg:#080a0f;--card:#111621;--line:#273043;--text:#f5f7fb;--muted:#9aa6b8;--accent:#7c5cff;--good:#35d07f;--bad:#ff657a}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#17152a,#080a0f 55%);font-family:system-ui,Segoe UI,sans-serif;color:var(--text)}main{max-width:900px;margin:auto;padding:22px 14px 60px}.hero{padding:22px;border:1px solid var(--line);border-radius:24px;background:#0f131ddd;box-shadow:0 20px 70px #0008}h1{margin:0 0 7px;font-size:30px}.sub{color:var(--muted);line-height:1.5}.section{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:18px;background:#0b0f17}label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}select,input{width:100%;padding:13px;border-radius:11px;border:1px solid var(--line);background:#080b11;color:var(--text);outline:none}select:focus,input:focus{border-color:var(--accent)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.links{display:flex;flex-direction:column;gap:10px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}.remove{background:#25141a;color:#ff8797;border:1px solid #49222d;border-radius:10px;padding:0 14px;font-weight:800}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:12px;padding:13px 17px;font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#1a2230;color:#fff;border:1px solid var(--line)}.file-button{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.file-info{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#080b11}.file-info b{color:#fff}.progress-box{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:14px;background:#080b11}.progress-track{height:14px;background:#1a2230;border-radius:99px;overflow:hidden;margin:10px 0}.progress-bar{height:100%;width:0;background:var(--accent);transition:width .25s}.progress-text{font-size:13px}.progress-file{font-size:12px;color:var(--muted);word-break:break-all}.upload-progress{margin-top:10px}.upload-list{max-height:180px;overflow:auto;margin-top:8px}.upload-item{padding:7px 0;border-bottom:1px solid #202735;font-size:12px}.upload-item:last-child{border-bottom:0}.mod-list{margin:8px 0 0;padding-left:20px;color:var(--muted);max-height:220px;overflow:auto}.mod-list li{margin:3px 0}button:disabled{opacity:.5;cursor:not-allowed}.hint{color:var(--muted);font-size:12px;margin-top:8px}.site-version{display:inline-block;margin-bottom:10px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#111621;color:#bfb4ff;font-size:11px;font-weight:800}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#1a1730;color:#bfb4ff;font-size:12px;margin-top:10px}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#17152a,#080a0f 55%);font-family:system-ui,Segoe UI,sans-serif;color:var(--text)}main{max-width:900px;margin:auto;padding:22px 14px 60px}.hero{padding:22px;border:1px solid var(--line);border-radius:24px;background:#0f131ddd;box-shadow:0 20px 70px #0008}h1{margin:0 0 7px;font-size:30px}.sub{color:var(--muted);line-height:1.5}.section{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:18px;background:#0b0f17}label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}select,input{width:100%;padding:13px;border-radius:11px;border:1px solid var(--line);background:#080b11;color:var(--text);outline:none}select:focus,input:focus{border-color:var(--accent)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.links{display:flex;flex-direction:column;gap:10px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}.remove{background:#25141a;color:#ff8797;border:1px solid #49222d;border-radius:10px;padding:0 14px;font-weight:800}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:12px;padding:13px 17px;font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#1a2230;color:#fff;border:1px solid var(--line)}.file-button{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.file-info{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#080b11}.file-info b{color:#fff}.progress-box{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:14px;background:#080b11}.progress-track{height:14px;background:#1a2230;border-radius:99px;overflow:hidden;margin:10px 0}.progress-bar{height:100%;width:0;background:var(--accent);transition:width .25s}.progress-text{font-size:13px}.progress-file{font-size:12px;color:var(--muted);word-break:break-all}.upload-progress{margin-top:10px}.upload-list{max-height:180px;overflow:auto;margin-top:8px}.upload-item{padding:7px 0;border-bottom:1px solid #202735;font-size:12px}.upload-item:last-child{border-bottom:0}.mod-list{margin:8px 0 0;padding-left:20px;color:var(--muted);max-height:220px;overflow:auto}.mod-list li{margin:3px 0}button:disabled{opacity:.5;cursor:not-allowed}.hint{color:var(--muted);font-size:12px;margin-top:8px}.site-version{display:inline-block;margin-bottom:10px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#111621;color:#bfb4ff;font-size:11px;font-weight:800}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#1a1730;color:#bfb4ff;font-size:12px;margin-top:10px}.tool-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0}.stat{padding:11px;border:1px solid var(--line);border-radius:12px;background:#080b11}.stat b{display:block;font-size:20px}.validation-results{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#080b11;max-height:300px;overflow:auto}.validation-item{padding:9px 11px;border-bottom:1px solid #202735;font-size:12px}.validation-item:last-child{border-bottom:0}.ok{color:var(--good)}.error{color:var(--bad)}.warn{color:#ffd166}.host{opacity:.75;margin-left:5px}.result-summary{margin-top:12px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#080b11}.progress-meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}
 </style></head>
 <body><main><section class="hero">
-<div class="site-version">SITE v3.2</div><h1>⚙️ Mikael Modpack Builder</h1>
+<div class="site-version">SITE v3.3</div><h1>⚙️ Mikael Modpack Builder</h1>
 <div class="sub">Escolha o Minecraft e o modloader, cole os links dos mods e baixe tudo em <b>um único ZIP</b>.</div>
 <div class="badge">Até 999999 links • até 150 MB por arquivo • 500 MB por pacote</div>
 
@@ -18,10 +18,18 @@
 <div><label>Versão do modloader (opcional)</label><input id="loaderVersion" placeholder="Ex.: 14.23.5.2860"></div>
 </div></div>
 
-<div class="section"><label>Links dos mods / arquivos</label><div id="links" class="links"></div><div class="hint">Cole um link direto para o arquivo. Pode ser CurseForge, Modrinth, GitHub Releases, seu servidor ou outro endereço público. Links de projeto do CurseForge são resolvidos quando a API Key está configurada; links de projeto do Modrinth são resolvidos automaticamente sem chave.</div><div class="actions"><button class="secondary" id="add" type="button">＋ Adicionar outro link</button><button class="secondary file-button" id="loadTxtBtn" type="button">📄 Carregar TXT</button><button class="secondary" id="saveTxt" type="button">💾 Salvar lista TXT</button><button class="secondary file-button" id="addFilesBtn" type="button">📦 Adicionar arquivos</button><input id="txtFile" type="file" accept=".txt,text/plain" class="file-input"><input id="modFiles" type="file" accept=".jar,.zip,.jarpack,application/java-archive,application/zip" multiple class="file-input"></div><div id="fileInfo" class="file-info" hidden></div><div id="uploadProgress" class="progress-box" hidden><div class="progress-text" id="uploadText">Adicionando arquivos...</div><div class="progress-track"><div id="uploadBar" class="progress-bar"></div></div><div class="progress-file" id="uploadFile"></div><div id="uploadList" class="upload-list"></div></div><div class="hint">O TXT pode ter uma URL por linha. Linhas começando com # são ignoradas; também aceitamos texto como <code>Nome do mod = https://...</code>.</div></div>
+<div class="section"><label>Links dos mods / arquivos</label>
+<div class="tool-row">
+  <button class="secondary" id="validate" type="button">🔎 Verificar links</button>
+  <button class="secondary" id="saveProject" type="button">💾 Salvar projeto</button>
+  <button class="secondary" id="loadProject" type="button">📂 Carregar projeto</button>
+  <button class="secondary" id="copyLinks" type="button">📋 Copiar links</button>
+</div>
+<div id="linkStats" class="stats" hidden></div>
+<div id="validationResults" class="validation-results" hidden></div><div id="links" class="links"></div><div class="hint">Cole um link direto para o arquivo. Pode ser CurseForge, Modrinth, GitHub Releases, seu servidor ou outro endereço público. Links de projeto do CurseForge são resolvidos quando a API Key está configurada; links de projeto do Modrinth são resolvidos automaticamente sem chave.</div><div class="actions"><button class="secondary" id="add" type="button">＋ Adicionar outro link</button><button class="secondary file-button" id="loadTxtBtn" type="button">📄 Carregar TXT</button><button class="secondary" id="saveTxt" type="button">💾 Salvar lista TXT</button><button class="secondary file-button" id="addFilesBtn" type="button">📦 Adicionar arquivos</button><input id="txtFile" type="file" accept=".txt,text/plain" class="file-input"><input id="modFiles" type="file" accept=".jar,.zip,.jarpack,application/java-archive,application/zip" multiple class="file-input"></div><div id="fileInfo" class="file-info" hidden></div><div id="uploadProgress" class="progress-box" hidden><div class="progress-text" id="uploadText">Adicionando arquivos...</div><div class="progress-track"><div id="uploadBar" class="progress-bar"></div></div><div class="progress-file" id="uploadFile"></div><div id="uploadList" class="upload-list"></div></div><div class="hint">O TXT pode ter uma URL por linha. Linhas começando com # são ignoradas; também aceitamos texto como <code>Nome do mod = https://...</code>.</div></div>
 
-<div class="actions"><button class="primary" id="build" type="button">⬇️ Baixar tudo em ZIP</button><button class="secondary" id="clear" type="button">🗑️ Limpar</button></div>
-<div id="progressBox" class="progress-box" hidden><div class="progress-text" id="progressText">Preparando...</div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div class="progress-file" id="progressFile"></div></div><div id="log">Adicione os links dos mods para começar.</div>
+<div class="actions"><button class="primary" id="build"/> type="button">⬇️ Baixar tudo em ZIP</button><button class="secondary" id="clear" type="button">🗑️ Limpar</button></div>
+<div id="buildStats" class="stats" hidden></div><div id="progressBox" class="progress-box" hidden><div class="progress-meta"><span id="progressCount">0/0</span><span id="progressSpeed">--</span></div><div class="progress-text" id="progressText">Preparando...</div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div class="progress-file" id="progressFile"></div></div><div id="log">Adicione os links dos mods para começar.</div>
 </section></main>
 <script>
 const linksEl=document.getElementById('links');
@@ -66,6 +74,7 @@ function showFileInfo(file,entries){
   fileInfo.innerHTML='<b>📄 '+esc(file.name)+'</b><div class="hint">'+entries.length+' mod(s) encontrado(s)</div><div class="mod-list">'+entries.map((x,i)=>'<div style="padding:8px 0;border-bottom:1px solid #202735"><b>'+(i+1)+'. '+esc(x.name)+'</b><br><a href="'+esc(x.url)+'" target="_blank" rel="noopener noreferrer" style="color:#bfb4ff;word-break:break-all">'+esc(x.url)+'</a></div>').join('')+'</div>';
 }
 function setLog(message){log.textContent=message;}
+function formatBytes(n){n=Number(n)||0;if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';if(n<1073741824)return (n/1048576).toFixed(1)+' MB';return (n/1073741824).toFixed(2)+' GB';}
 
 addLink();
 document.getElementById('add').addEventListener('click',()=>addLink());
@@ -107,6 +116,49 @@ txtFile.addEventListener('change',e=>{
   reader.readAsText(file,'UTF-8');
 });
 
+
+function hostOf(url){try{return new URL(url).hostname.replace(/^www\./,'');}catch{return 'link inválido';}}
+function updateStats(total,valid,invalid,duplicate=0){
+  const el=document.getElementById('linkStats'); el.hidden=false;
+  el.innerHTML='<div class="stat"><b>'+total+'</b><span>Total</span></div><div class="stat"><b class="ok">'+valid+'</b><span>OK</span></div><div class="stat"><b class="error">'+invalid+'</b><span>Com erro</span></div><div class="stat"><b class="warn">'+duplicate+'</b><span>Duplicados</span></div>';
+}
+function localLinkReport(){
+  const links=getLinks(), seen=new Set(), dup=0, invalid=[];
+  links.forEach(u=>{if(seen.has(u))dup++;seen.add(u);try{const x=new URL(u);if(!/^https?:$/.test(x.protocol))invalid.push(u);}catch{invalid.push(u);}});
+  return {links,dup,invalid};
+}
+function renderValidation(items){
+  const box=document.getElementById('validationResults'); box.hidden=false;
+  box.innerHTML=items.map(x=>'<div class="validation-item '+(x.ok?'ok':'error')+'">'+(x.ok?'✅':'❌')+' <b>'+esc(x.name||x.url)+'</b><span class="host">('+esc(hostOf(x.url))+')</span><br><span>'+esc(x.message||'')+'</span></div>').join('');
+}
+document.getElementById('copyLinks').addEventListener('click',async()=>{
+  const links=getLinks(); if(!links.length){setLog('Não há links para copiar.');return;}
+  try{await navigator.clipboard.writeText(links.join('\n'));setLog('📋 '+links.length+' link(s) copiado(s).');}catch{setLog('❌ Não foi possível copiar os links.');}
+});
+document.getElementById('saveProject').addEventListener('click',()=>{
+  const data={version:1,minecraft:document.getElementById('mc').value,loader:document.getElementById('loader').value,loaderVersion:document.getElementById('loaderVersion').value,links:getLinks()};
+  localStorage.setItem('mikael-modpack-project',JSON.stringify(data));setLog('💾 Projeto salvo neste aparelho.');
+});
+document.getElementById('loadProject').addEventListener('click',()=>{
+  try{const data=JSON.parse(localStorage.getItem('mikael-modpack-project')||'null');if(!data)throw new Error('Nenhum projeto salvo.');
+    if(data.minecraft&&[...document.getElementById('mc').options].some(o=>o.value===data.minecraft))document.getElementById('mc').value=data.minecraft;
+    if(data.loader)document.getElementById('loader').value=data.loader;
+    document.getElementById('loaderVersion').value=data.loaderVersion||'';
+    linksEl.innerHTML='';(data.links||[]).forEach(addLink);if(!(data.links||[]).length)addLink();setLog('📂 Projeto carregado.');
+  }catch(e){setLog('❌ '+e.message);}
+});
+document.getElementById('validate').addEventListener('click',async()=>{
+  const report=localLinkReport(); if(!report.links.length){setLog('Adicione links antes de verificar.');return;}
+  if(report.dup){setLog('❌ Existem '+report.dup+' link(s) duplicado(s). Remova os duplicados.');return;}
+  if(report.invalid.length){setLog('❌ Existem '+report.invalid.length+' link(s) inválido(s).');renderValidation(report.links.map(u=>({url:u,ok:!report.invalid.includes(u),message:report.invalid.includes(u)?'URL inválida':'URL válida'})));return;}
+  const btn=document.getElementById('validate');btn.disabled=true;setLog('🔎 Verificando '+report.links.length+' link(s)...');
+  try{
+    const r=await fetch('/api/validate-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({minecraftVersion:document.getElementById('mc').value,modLoader:document.getElementById('loader').value,links:report.links})});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Falha na verificação.');
+    renderValidation(j.results||[]);const good=(j.results||[]).filter(x=>x.ok).length;updateStats(report.links.length,good,report.links.length-good,0);setLog('🔎 Verificação concluída: '+good+'/'+report.links.length+' link(s) OK.');
+  }catch(e){setLog('❌ '+e.message);}finally{btn.disabled=false;}
+});
+
 document.getElementById('saveTxt').addEventListener('click',()=>{
   const urls=getLinks(); if(!urls.length){setLog('Adicione pelo menos um link antes de salvar o TXT.');return;}
   const blob=new Blob([urls.join('\n')+'\n'],{type:'text/plain;charset=utf-8'}); const url=URL.createObjectURL(blob);
@@ -121,7 +173,11 @@ document.getElementById('clear').addEventListener('click',()=>{
 document.getElementById('build').addEventListener('click',async()=>{
   const button=document.getElementById('build'); const links=getLinks(); const uploadId=localState.uploadId||window.localUploadId||'';
   if(!links.length&&!uploadId){setLog('Adicione pelo menos um link ou arquivo.');return;}
-  button.disabled=true; const bar=document.getElementById('progressBar'),pt=document.getElementById('progressText'),pf=document.getElementById('progressFile');
+  const localReport=localLinkReport();
+  if(localReport.dup){setLog('❌ Remova os '+localReport.dup+' link(s) duplicado(s) antes de criar o ZIP.');return;}
+  if(localReport.invalid.length){setLog('❌ Corrija os '+localReport.invalid.length+' link(s) inválido(s) antes de criar o ZIP.');return;}
+  button.disabled=true; const bar=document.getElementById('progressBar'),pt=document.getElementById('progressText'),pf=document.getElementById('progressFile'),pc=document.getElementById('progressCount'),ps=document.getElementById('progressSpeed');
+  const buildStats=document.getElementById('buildStats'); buildStats.hidden=false; const startedAt=Date.now();
   progressBox.hidden=false; bar.style.width='0%'; pt.textContent='Preparando...'; pf.textContent=''; let es=null;
   try{
     const selected=document.getElementById('mc').value; const mc=selected==='custom'?prompt('Digite a versão do Minecraft:'):selected; if(!mc)throw new Error('Versão do Minecraft não informada.');
@@ -132,7 +188,7 @@ document.getElementById('build').addEventListener('click',async()=>{
     await new Promise((resolve,reject)=>{
       let finished=false;
       const fail=message=>{if(finished)return;finished=true;if(es)es.close();reject(new Error(message));};
-      es.onmessage=event=>{try{const p=JSON.parse(event.data||'{}');const percent=Math.max(0,Math.min(100,Number(p.percent)||0));bar.style.width=percent+'%';pt.textContent=p.message||'Processando...';pf.textContent=p.filename?'Arquivo atual: '+p.filename:'';if(p.status==='done'){finished=true;es.close();resolve(p);}else if(p.status==='error')fail(p.message||'Erro ao gerar ZIP.');}catch{fail('Resposta de progresso inválida.');}};
+      es.onmessage=event=>{try{const p=JSON.parse(event.data||'{}');const percent=Math.max(0,Math.min(100,Number(p.percent)||0));bar.style.width=percent+'%';pt.textContent=p.message||'Processando...';pf.textContent=p.filename?'Arquivo atual: '+p.filename:'';pc.textContent=(p.current||0)+'/'+(p.total||0);const elapsed=Math.max(0.1,(Date.now()-startedAt)/1000);ps.textContent=(p.bytesPerSecond?formatBytes(p.bytesPerSecond)+'/s':(p.current?Math.round((p.current/(elapsed))*60)+' itens/min':'--'));if(p.status==='done'){finished=true;es.close();resolve(p);}else if(p.status==='error')fail(p.message||'Erro ao gerar ZIP.');}catch{fail('Resposta de progresso inválida.');}};
       es.onerror=()=>fail('A conexão de progresso foi interrompida.');
     });
     const a=document.createElement('a'); a.href='/api/build/'+encodeURIComponent(j.id)+'/download'; a.download='Mikael_Modpack.zip'; document.body.appendChild(a); a.click(); a.remove(); setLog('✅ ZIP pronto e download iniciado.');
