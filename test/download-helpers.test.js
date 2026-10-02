@@ -8,6 +8,7 @@ const archiver = require("archiver");
 const {
   app,
   parseCurseForgeFileId,
+  isReleasedCurseForgeFile,
   MAX_UPLOAD_BODY_BYTES,
   jobs,
   isPrivateIp,
@@ -257,4 +258,12 @@ test("CurseForge file ID parser accepts files and download paths", () => {
   assert.equal(parseCurseForgeFileId(["minecraft","mc-mods","jei","files","123456"]), 123456);
   assert.equal(parseCurseForgeFileId(["minecraft","mc-mods","jei","download","123456"]), 123456);
   assert.equal(parseCurseForgeFileId(["minecraft","mc-mods","jei","files","abc"]), null);
+});
+
+
+test("CurseForge file status filter accepts only released non-server files", () => {
+  assert.equal(isReleasedCurseForgeFile({ isAvailable: true, fileStatus: 10, isServerPack: false }), true);
+  assert.equal(isReleasedCurseForgeFile({ isAvailable: true, fileStatus: 9, isServerPack: false }), false);
+  assert.equal(isReleasedCurseForgeFile({ isAvailable: true, fileStatus: 10, isServerPack: true }), false);
+  assert.equal(isReleasedCurseForgeFile({ isAvailable: false, fileStatus: 10, isServerPack: false }), false);
 });
