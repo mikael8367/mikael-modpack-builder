@@ -161,3 +161,10 @@ test("published hash mismatch is rejected", async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test("download retry policy covers common transient stream errors", () => {
+  assert.equal(isRetryableDownloadError({ code: "ERR_STREAM_PREMATURE_CLOSE" }), true);
+  assert.equal(isRetryableDownloadError({ code: "EPIPE" }), true);
+  assert.equal(isRetryableDownloadError({ response: { status: 404 } }), false);
+});
