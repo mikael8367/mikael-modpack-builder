@@ -124,7 +124,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.0" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.1" }
   });
   return response.data && response.data.data;
 }
@@ -218,7 +218,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.0" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.1" }
       });
       const version = response.data;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -242,7 +242,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.0" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.1" }
       });
       projectData = project.data;
     } catch (err) {
@@ -273,7 +273,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.0" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.1" }
       });
       versions = response.data;
     } catch (err) {
@@ -323,7 +323,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.0 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.1 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -434,6 +434,12 @@ function isRetryableDownloadError(err) {
   if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
   const code = String(err && err.code || "").toUpperCase();
   return ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH"].includes(code);
+}
+
+function canReserveDownloadBytes(committedBytes, reservedBytes, expectedBytes) {
+  const expected = Number(expectedBytes || 0);
+  if (expected < 0 || expected > MAX_FILE_BYTES) return false;
+  return Number(committedBytes || 0) + Number(reservedBytes || 0) + expected <= MAX_TOTAL_BYTES;
 }
 
 function sleep(ms) {
@@ -566,6 +572,7 @@ app.post("/api/build", async (req, res) => {
       const files = [];
       let total = 0;
       const reservedNames = new Set();
+      let reservedBytes = 0;
       const localCount = localUpload ? localUpload.files.length : 0;
       try {
         if (localUpload) {
@@ -600,6 +607,7 @@ app.post("/api/build", async (req, res) => {
           let target = "";
           let success = false;
           let lastError = null;
+          let reservedForThis = 0;
 
           for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES && !success; attempt++) {
             let response = null;
@@ -618,13 +626,22 @@ app.post("/api/build", async (req, res) => {
 
               const expected = Number(response.headers["content-length"] || 0);
               if (expected > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
-              if (expected > 0 && total + expected > MAX_TOTAL_BYTES) {
-                throw new Error("O pacote ultrapassaria 500 MB com o tamanho informado pelo servidor.");
+              if (expected > 0) {
+                if (!canReserveDownloadBytes(total, reservedBytes, expected)) {
+                  throw new Error("O pacote não tem espaço suficiente para baixar " + filename + " sem ultrapassar 500 MB.");
+                }
+                reservedForThis = expected;
+                reservedBytes += expected;
               }
 
               response.data.on("data", chunk => {
                 bytes += chunk.length;
                 total += chunk.length;
+                if (reservedForThis > 0) {
+                  const releasedReservation = Math.min(reservedForThis, chunk.length);
+                  reservedForThis -= releasedReservation;
+                  reservedBytes = Math.max(0, reservedBytes - releasedReservation);
+                }
                 const filePercent = expected ? Math.min(1, bytes / expected) : 0;
                 const progress = Math.min(85, Math.round(((completed + filePercent) / totalCount) * 85));
                 const elapsed = Math.max(0.1, (Date.now() - job.created) / 1000);
@@ -658,6 +675,10 @@ app.post("/api/build", async (req, res) => {
             } catch (e) {
               lastError = e;
               total = Math.max(0, total - bytes);
+              if (reservedForThis > 0) {
+                reservedBytes = Math.max(0, reservedBytes - reservedForThis);
+                reservedForThis = 0;
+              }
               if (target) await fsp.rm(target, { force: true }).catch(() => {});
               if (response && response.data) response.data.destroy();
               if (attempt < MAX_DOWNLOAD_RETRIES && isRetryableDownloadError(e)) {
@@ -771,5 +792,6 @@ module.exports = {
   isZipArchive,
   validateArchiveFile,
   parseContentDispositionFilename,
-  isRetryableDownloadError
+  isRetryableDownloadError,
+  canReserveDownloadBytes
 };
