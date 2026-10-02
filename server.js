@@ -44,6 +44,22 @@ const http = require("http");
 const https = require("https");
 const multer = require("multer");
 const upload = multer({ dest: path.join(os.tmpdir(), "mikael-uploads-"), limits: { fileSize: MAX_FILE_BYTES, files: MAX_UPLOAD_FILES } });
+
+async function cleanupOrphanedTempData() {
+  const now = Date.now();
+  const maxAge = Math.max(UPLOAD_TTL_MS, JOB_TTL_MS);
+  let entries = [];
+  try { entries = await fsp.readdir(os.tmpdir(), { withFileTypes: true }); } catch { return; }
+  await Promise.all(entries.filter(entry => /^(mikael-(uploads-|local-|modpack-))/.test(entry.name)).map(async entry => {
+    const target = path.join(os.tmpdir(), entry.name);
+    try {
+      const st = await fsp.stat(target);
+      if (now - st.mtimeMs > maxAge) await fsp.rm(target, { recursive: entry.isDirectory(), force: true });
+    } catch {}
+  }));
+}
+
+cleanupOrphanedTempData().catch(() => {});
 app.post("/api/upload-files", upload.array("files"), async (req, res) => {
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ error: "Nenhum arquivo foi enviado." });
@@ -204,7 +220,7 @@ async function curseForgeApiGet(pathname, params = {}) {
         proxy: false,
         timeout: 20000,
         params,
-        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.7" }
+        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.8" }
       });
       const value = response.data && response.data.data;
       if (cacheKey) {
@@ -938,7 +954,7 @@ app.post("/api/build", async (req, res) => {
   }
 });
 
-app.use((err, req, res, next) => {
+app.use(async (err, req, res, next) => {
   if (res.headersSent) return next(err);
   if (err instanceof multer.MulterError) {
     const partialFiles = Array.isArray(req.files) ? req.files : [];
