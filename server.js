@@ -224,34 +224,41 @@ async function curseForgeApiGet(pathname, params = {}) {
   const now = Date.now();
   if (curseForgeCache.has(cacheKey)) {
     const hit = curseForgeCache.get(cacheKey);
-    if (hit.expires > now) return hit.value;
+    if (hit.expires > now) return hit.promise ? hit.promise : hit.value;
     curseForgeCache.delete(cacheKey);
   }
-  let lastError;
-  for (let retry = 0; retry < API_RETRIES; retry++) {
-    try {
-      const response = await axios.get(CURSEFORGE_API_BASE + pathname, {
-        proxy: false,
-        timeout: 20000,
-        params,
-        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.9" }
-      });
-      const value = response.data && response.data.data;
-      if (cacheKey) {
-        if (curseForgeCache.size >= API_CACHE_MAX_ENTRIES) curseForgeCache.delete(curseForgeCache.keys().next().value);
-        curseForgeCache.set(cacheKey, { value, expires: Date.now() + MODRINTH_CACHE_TTL_MS });
+  const request = (async () => {
+    let lastError;
+    for (let retry = 0; retry < API_RETRIES; retry++) {
+      try {
+        const response = await axios.get(CURSEFORGE_API_BASE + pathname, {
+          proxy: false,
+          timeout: 20000,
+          params,
+          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/5.4" }
+        });
+        return response.data && response.data.data;
+      } catch (err) {
+        lastError = err;
+        const status = Number(err && err.response && err.response.status || 0);
+        if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
+        const retryAfter = retryAfterMs(err.response?.headers || {});
+        if (retryAfter > 0) await sleep(Math.min(60000, retryAfter));
+        else await apiDelay(retry);
       }
-      return value;
-    } catch (err) {
-      lastError = err;
-      const status = Number(err && err.response && err.response.status || 0);
-      if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
-      const retryAfter = Number(err.response?.headers?.["retry-after"] || 0);
-      if (retryAfter > 0) await sleep(Math.min(10000, retryAfter * 1000));
-      else await apiDelay(retry);
     }
+    throw lastError || new Error("Falha na API do CurseForge.");
+  })();
+  curseForgeCache.set(cacheKey, { expires: Date.now() + MODRINTH_CACHE_TTL_MS, promise: request });
+  try {
+    const value = await request;
+    if (value != null) curseForgeCache.set(cacheKey, { expires: Date.now() + MODRINTH_CACHE_TTL_MS, value });
+    else curseForgeCache.delete(cacheKey);
+    return value;
+  } catch (err) {
+    if (curseForgeCache.get(cacheKey)?.promise === request) curseForgeCache.delete(cacheKey);
+    throw err;
   }
-  throw lastError || new Error("Falha na API do CurseForge.");
 }
 
 async function resolveCurseForgeUrl(rawUrl, context = {}) {
