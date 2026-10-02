@@ -178,3 +178,11 @@ test("Retry-After parser supports seconds and HTTP dates", () => {
   assert.ok(parsed >= 0 && parsed <= 3000);
   assert.equal(retryAfterMs({}), 0);
 });
+
+
+test("client environment filter rejects server-only versions", () => {
+  assert.equal(isClientCompatibleEnvironment("server_only"), false);
+  assert.equal(isClientCompatibleEnvironment("dedicated_server_only"), false);
+  assert.equal(isClientCompatibleEnvironment("client_and_server"), true);
+  assert.equal(isClientCompatibleEnvironment("client_only"), true);
+});
