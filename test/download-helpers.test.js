@@ -78,3 +78,12 @@ test("download byte reservations prevent concurrent 500 MB overflow", () => {
   assert.equal(canReserveDownloadBytes(200 * 1024 * 1024, 100 * 1024 * 1024, 250 * 1024 * 1024), false);
   assert.equal(canReserveDownloadBytes(0, 0, 151 * 1024 * 1024), false);
 });
+
+
+test("reserved/special-use addresses are blocked", () => {
+  assert.equal(isPrivateIp("192.0.2.10"), true);
+  assert.equal(isPrivateIp("198.51.100.20"), true);
+  assert.equal(isPrivateIp("203.0.113.5"), true);
+  assert.equal(isPrivateIp("224.0.0.1"), true);
+  assert.equal(isPrivateIp("2001:db8::1"), true);
+});
