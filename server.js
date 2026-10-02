@@ -155,6 +155,23 @@ async function apiDelay(retry) {
   await sleep(API_RETRY_BASE_MS * Math.pow(2, retry));
 }
 
+function retryAfterMs(headers) {
+  const raw = headers?.["retry-after"];
+  if (raw == null) return 0;
+  const value = String(raw).trim();
+  if (/^\d+(\.\d+)?$/.test(value)) return Math.max(0, Math.round(Number(value) * 1000));
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : 0;
+}
+
+async function waitForModrinthSlot() {
+  const now = Date.now();
+  const slot = Math.max(now, modrinthNextRequestAt);
+  const wait = Math.max(0, slot - now);
+  modrinthNextRequestAt = slot + MODRINTH_MIN_REQUEST_INTERVAL_MS;
+  if (wait) await sleep(wait);
+}
+
 async function modrinthApiGet(url, config = {}, cacheKey = "") {
   const now = Date.now();
   if (cacheKey && modrinthCache.has(cacheKey)) {
@@ -163,12 +180,9 @@ async function modrinthApiGet(url, config = {}, cacheKey = "") {
     modrinthCache.delete(cacheKey);
   }
   const request = (async () => {
-    const current = Date.now();
-    const wait = Math.max(0, modrinthNextRequestAt - current);
-    modrinthNextRequestAt = Math.max(modrinthNextRequestAt, current) + MODRINTH_MIN_REQUEST_INTERVAL_MS;
-    if (wait) await sleep(wait);
     let lastError;
     for (let retry = 0; retry < API_RETRIES; retry++) {
+      await waitForModrinthSlot();
       try {
         const response = await axios.get(url, {
           proxy: false,
@@ -181,8 +195,8 @@ async function modrinthApiGet(url, config = {}, cacheKey = "") {
         lastError = err;
         const status = Number(err && err.response && err.response.status || 0);
         if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) throw err;
-        const retryAfter = Number(err.response?.headers?.["retry-after"] || 0);
-        if (retryAfter > 0) await sleep(Math.min(10000, retryAfter * 1000));
+        const retryAfter = retryAfterMs(err.response?.headers || {});
+        if (retryAfter > 0) await sleep(Math.min(60000, retryAfter));
         else await apiDelay(retry);
       }
     }
@@ -194,7 +208,7 @@ async function modrinthApiGet(url, config = {}, cacheKey = "") {
     modrinthCache.set(cacheKey, entry);
     try {
       const value = await request;
-      modrinthCache.set(cacheKey, { expires: Date.now() + MODRINTH_CACHE_TTL_MS, value });
+      if (value != null) modrinthCache.set(cacheKey, { expires: Date.now() + MODRINTH_CACHE_TTL_MS, value });
       return value;
     } catch (err) {
       if (modrinthCache.get(cacheKey)?.promise === request) modrinthCache.delete(cacheKey);
@@ -220,7 +234,7 @@ async function curseForgeApiGet(pathname, params = {}) {
         proxy: false,
         timeout: 20000,
         params,
-        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.8" }
+        headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.9" }
       });
       const value = response.data && response.data.data;
       if (cacheKey) {
@@ -689,7 +703,14 @@ app.get("/api/build/:id/events", (req, res) => {
 });
 
 function updateJob(job, data) {
-  job.progress = { ...job.progress, ...data };
+  const previous = job.progress || {};
+  const merged = { ...previous, ...data };
+  if (data.status !== "error") {
+    if (Number.isFinite(Number(previous.percent))) merged.percent = Math.max(Number(previous.percent), Number(merged.percent || 0));
+    if (Number.isFinite(Number(previous.current))) merged.current = Math.max(Number(previous.current), Number(merged.current || 0));
+    if (Number.isFinite(Number(previous.total))) merged.total = Math.max(Number(previous.total), Number(merged.total || 0));
+  }
+  job.progress = merged;
   for (const client of job.clients) {
     try { client.write(`data: ${JSON.stringify(job.progress)}\n\n`); } catch {}
   }
@@ -985,6 +1006,7 @@ module.exports = {
   isRetryableDownloadError,
   canReserveDownloadBytes,
   verifyFileIntegrity,
+  retryAfterMs,
   jobs,
   modrinthCache,
   curseForgeCache
