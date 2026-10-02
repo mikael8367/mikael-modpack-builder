@@ -130,7 +130,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.4" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/4.5" }
   });
   return response.data && response.data.data;
 }
@@ -155,6 +155,9 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
     if (wantedVersion && (!Array.isArray(file.gameVersions) || !file.gameVersions.includes(wantedVersion))) {
       throw new Error("Incompatível: o arquivo CurseForge " + fileId + " não suporta Minecraft " + wantedVersion + ".");
     }
+    if (file.isServerPack === true) throw new Error("O arquivo CurseForge " + fileId + " é um server pack e não será colocado em mods/.");
+    context.expectedHashes = file.hashes || null;
+    context.expectedSize = Number(file.fileLength || 0) || null;
     const downloadUrl = file.downloadUrl || await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId + "/download-url");
     if (!downloadUrl) throw new Error("Arquivo CurseForge " + fileId + " não possui URL de download.");
     return String(downloadUrl);
@@ -171,8 +174,11 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   const candidates = Array.isArray(files)
     ? files.filter(f => f && f.isAvailable !== false && Array.isArray(f.gameVersions) && f.gameVersions.includes(String(context.minecraftVersion || "")))
     : [];
-  const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates[0];
-  if (!selected) throw new Error("Nenhum arquivo compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
+  const usable = candidates.filter(f => f && f.isServerPack !== true);
+  const selected = usable.find(f => Number(f.releaseType) === 1) || usable[0];
+  if (!selected) throw new Error("Nenhum arquivo de mod compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
+  context.expectedHashes = selected.hashes || null;
+  context.expectedSize = Number(selected.fileLength || 0) || null;
   if (!selected.downloadUrl) throw new Error("O arquivo de " + slug + " não possui URL de download disponível.");
   return String(selected.downloadUrl);
 }
@@ -224,7 +230,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.4" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
       });
       const version = response.data;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -236,6 +242,10 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
         throw new Error("Incompatível: a versão do Modrinth " + versionId + " não suporta " + selectedLoader + ".");
       }
       versions = [version];
+      const versionFiles = Array.isArray(version.files) ? version.files : [];
+      const versionPrimary = versionFiles.find(f => f && f.primary) || versionFiles[0];
+      if (versionPrimary && versionPrimary.hashes) context.expectedHashes = versionPrimary.hashes;
+      if (versionPrimary && versionPrimary.size) context.expectedSize = Number(versionPrimary.size) || null;
       projectData = { title: version.name || version.version_number || versionId };
     } catch (err) {
       const status = err && err.response && err.response.status;
@@ -248,7 +258,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.4" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
       });
       projectData = project.data;
     } catch (err) {
@@ -279,7 +289,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.4" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/4.5" }
       });
       versions = response.data;
     } catch (err) {
@@ -297,8 +307,11 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     || candidates.find(v => v.version_type === "release")
     || candidates[0];
 
-  const primary = selected.files.find(f => f.primary) || selected.files[0];
-  if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo para download.");
+  const usableFiles = selected.files.filter(f => f && !["sources-jar", "dev-jar", "javadoc-jar", "signature"].includes(String(f.file_type || "").toLowerCase()));
+  const primary = usableFiles.find(f => f.primary) || usableFiles[0];
+  if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo principal para download.");
+  context.expectedHashes = primary.hashes || null;
+  context.expectedSize = Number(primary.size || 0) || null;
   const selectedFilename = String(primary.filename || "").trim();
   if (selectedFilename && !/\.(jar|zip)$/i.test(selectedFilename)) {
     throw new Error("O arquivo principal do Modrinth (" + selectedFilename + ") não é um JAR/ZIP de mod.");
@@ -329,7 +342,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/4.4 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/4.5 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -454,7 +467,7 @@ function isRetryableDownloadError(err) {
   const status = Number(err && err.response && err.response.status || err && err.status || 0);
   if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
   const code = String(err && err.code || "").toUpperCase();
-  return ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH"].includes(code);
+  return ["ECONNRESET", "ECONNABORTED", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH", "EINTEGRITY"].includes(code);
 }
 
 function canReserveDownloadBytes(committedBytes, reservedBytes, expectedBytes) {
@@ -465,6 +478,41 @@ function canReserveDownloadBytes(committedBytes, reservedBytes, expectedBytes) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function verifyFileIntegrity(filePath, hashes, filename) {
+  if (!hashes) return;
+  const expected = {};
+  if (Array.isArray(hashes)) {
+    for (const item of hashes) {
+      if (!item || !item.value) continue;
+      if (Number(item.algo) === 1) expected.sha1 = String(item.value).toLowerCase();
+      if (Number(item.algo) === 2) expected.md5 = String(item.value).toLowerCase();
+    }
+  } else if (typeof hashes === "object") {
+    if (hashes.sha1) expected.sha1 = String(hashes.sha1).toLowerCase();
+    if (hashes.sha512) expected.sha512 = String(hashes.sha512).toLowerCase();
+    if (hashes.md5) expected.md5 = String(hashes.md5).toLowerCase();
+  }
+  const algorithms = Object.keys(expected);
+  if (!algorithms.length) return;
+  const hashers = Object.fromEntries(algorithms.map(algo => [algo, crypto.createHash(algo)]));
+  await new Promise((resolve, reject) => {
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", chunk => {
+      for (const hasher of Object.values(hashers)) hasher.update(chunk);
+    });
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+  for (const algo of algorithms) {
+    const actual = hashers[algo].digest("hex").toLowerCase();
+    if (actual !== expected[algo]) {
+      const err = new Error("Integridade inválida: o hash " + algo + " de " + (filename || "arquivo") + " não corresponde ao publicado.");
+      err.code = "EINTEGRITY";
+      throw err;
+    }
+  }
 }
 
 
@@ -632,6 +680,7 @@ app.post("/api/build", async (req, res) => {
           let reservedForThis = 0;
           let lastProgressAt = 0;
 
+          const context = { minecraftVersion, modLoader };
           for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES && !success; attempt++) {
             let response = null;
             let bytes = 0;
@@ -647,7 +696,10 @@ app.post("/api/build", async (req, res) => {
                 target = path.join(tempDir, i + "-" + filename);
               }
 
-              const expected = Number(response.headers["content-length"] || 0);
+              const expected = Number(response.headers["content-length"] || context.expectedSize || 0);
+              if (context.expectedSize && expected && context.expectedSize !== expected) {
+                throw new Error("O tamanho publicado de " + filename + " não corresponde ao tamanho informado pelo servidor.");
+              }
               if (expected > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
               if (expected > 0) {
                 if (!canReserveDownloadBytes(total, reservedBytes, expected)) {
@@ -689,6 +741,7 @@ app.post("/api/build", async (req, res) => {
               if (bytes > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
               if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
               await validateArchiveFile(target, filename);
+              await verifyFileIntegrity(target, context.expectedHashes, filename);
 
               files.push({ filename, target, source: raw, size: bytes });
               success = true;
@@ -818,5 +871,6 @@ module.exports = {
   parseContentDispositionFilename,
   isRetryableDownloadError,
   canReserveDownloadBytes,
+  verifyFileIntegrity,
   jobs
 };
