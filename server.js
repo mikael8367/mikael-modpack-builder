@@ -775,13 +775,12 @@ app.get("/api/mod-search", async (req, res) => {
   const minecraftVersion = String(req.query.minecraftVersion || "").trim();
   const modLoader = String(req.query.modLoader || "").trim();
   const page = Math.max(0, Number(req.query.page || 0) || 0);
-  if (!query) return res.status(400).json({ error: "Digite o nome do mod para pesquisar." });
   if (!minecraftVersion || !modLoader) return res.status(400).json({ error: "Selecione Minecraft e modloader antes de pesquisar." });
   try {
     if (source === "modrinth") {
       const data = await modrinthApiGet("https://api.modrinth.com/v2/search", {
         params: {
-          query,
+          ...(query ? { query } : {}),
           facets: modrinthSearchFacets(minecraftVersion, modLoader),
           index: "downloads",
           offset: page * 20,
@@ -811,7 +810,7 @@ app.get("/api/mod-search", async (req, res) => {
       const data = await curseForgeApiGet("/mods/search", {
         gameId: CURSEFORGE_GAME_ID,
         classId: 6,
-        searchFilter: query,
+        ...(query ? { searchFilter: query } : {}),
         gameVersion: minecraftVersion,
         modLoaderType: loaderType,
         sortField: 2,
