@@ -122,7 +122,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.4" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.5" }
   });
   return response.data && response.data.data;
 }
@@ -185,7 +185,14 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   if (!isModrinthHost(u.hostname)) return rawUrl;
 
   // Links diretos do CDN do Modrinth já apontam para o arquivo.
-  if (u.hostname.toLowerCase().includes("cdn.modrinth.com")) return rawUrl;
+  // O parâmetro mr_download_reason é usado pelo próprio Modrinth nas páginas
+  // de download e evita que o CDN trate a requisição como uma navegação HTML.
+  if (u.hostname.toLowerCase().includes("cdn.modrinth.com")) {
+    if (!u.searchParams.has("mr_download_reason")) {
+      u.searchParams.set("mr_download_reason", "mikael-modpack-builder");
+    }
+    return u.toString();
+  }
 
   const parts = u.pathname.split("/").filter(Boolean);
   const projectKinds = new Set(["mod", "plugin", "datapack", "resourcepack", "shader", "modpack"]);
@@ -196,7 +203,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
     proxy: false,
     timeout: 20000,
-    headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.2" }
+    headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.5" }
   });
   const projectData = project.data;
   if (!projectData || !projectData.id) throw new Error("Projeto Modrinth não encontrado: " + slug);
@@ -227,7 +234,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     {
       proxy: false,
       timeout: 20000,
-      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.2" }
+      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.5" }
     }
   );
 
@@ -242,7 +249,15 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
 
   const primary = selected.files.find(f => f.primary) || selected.files[0];
   if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo para download.");
-  return String(primary.url);
+  try {
+    const fileUrl = new URL(String(primary.url));
+    if (fileUrl.hostname.toLowerCase().includes("cdn.modrinth.com") && !fileUrl.searchParams.has("mr_download_reason")) {
+      fileUrl.searchParams.set("mr_download_reason", "mikael-modpack-builder");
+    }
+    return fileUrl.toString();
+  } catch {
+    return String(primary.url);
+  }
 }
 
 async function requestFile(rawUrl, context = {}) {
@@ -257,10 +272,12 @@ async function requestFile(rawUrl, context = {}) {
         return cb(null, result.address, result.family);
       }
     };
+    const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mozilla/5.0 (compatible; Mikael-Modpack-Builder/3.1)",
-      Accept: "*/*"
+      "User-Agent": "Mikael-Modpack-Builder/3.5 (https://github.com/mikael8367/mikael-modpack-builder)",
+      Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
+    if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
     if (CURSEFORGE_API_KEY && checked.url.hostname.toLowerCase().endsWith("forgecdn.net")) headers["x-api-key"] = CURSEFORGE_API_KEY;
     let response;
     try {
@@ -291,6 +308,9 @@ async function requestFile(rawUrl, context = {}) {
     const contentType = String(response.headers["content-type"] || "").toLowerCase();
     if (contentType.includes("text/html")) {
       response.data.destroy();
+      if (isModrinthDownload) {
+        throw new Error("O CDN do Modrinth respondeu uma página HTML em vez do arquivo. O resolvedor foi atualizado; tente novamente com o link do projeto Modrinth.");
+      }
       throw new Error("O link não entregou um arquivo. Para CurseForge, use uma URL de download do arquivo ou configure CURSEFORGE_API_KEY para o resolvedor automático.");
     }
     const length = Number(response.headers["content-length"] || 0);
