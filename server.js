@@ -122,7 +122,7 @@ async function curseForgeApiGet(pathname, params = {}) {
     proxy: false,
     timeout: 20000,
     params,
-    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.6" }
+    headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/3.7" }
   });
   return response.data && response.data.data;
 }
@@ -210,7 +210,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.6" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.7" }
       });
       versions = [response.data];
     } catch (err) {
@@ -224,7 +224,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.6" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.7" }
       });
       projectData = project.data;
     } catch (err) {
@@ -255,7 +255,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await axios.get("https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.6" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/3.7" }
       });
       versions = response.data;
     } catch (err) {
@@ -287,7 +287,8 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
 }
 
 async function requestFile(rawUrl, context = {}) {
-  let current = await resolveCurseForgeUrl(rawUrl, context);\n  current = await resolveModrinthUrl(current, context);
+  let current = await resolveCurseForgeUrl(rawUrl, context);
+  current = await resolveModrinthUrl(current, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const checked = await validatePublicUrl(current);
     const agentOptions = {
@@ -300,7 +301,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/3.6 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/3.7 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
