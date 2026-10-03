@@ -773,6 +773,48 @@ function modrinthSearchFacets(minecraftVersion, modLoader) {
   return JSON.stringify(facets);
 }
 
+app.get("/api/curseforge-status", async (req, res) => {
+  if (!CURSEFORGE_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      status: 503,
+      code: "MISSING_KEY",
+      message: "CURSEFORGE_API_KEY não está configurada no Render."
+    });
+  }
+  try {
+    await curseForgeApiGet("/mods/search", {
+      gameId: CURSEFORGE_GAME_ID,
+      classId: 6,
+      pageSize: 1,
+      index: 0
+    });
+    return res.json({
+      ok: true,
+      status: 200,
+      code: "OK",
+      message: "A API do CurseForge respondeu corretamente. A chave configurada no Render está sendo aceita."
+    });
+  } catch (e) {
+    const status = Number(e?.response?.status || 0);
+    if (status === 401) {
+      return res.status(502).json({ ok: false, status, code: "INVALID_KEY", message: "A chave do CurseForge foi recusada (HTTP 401). Verifique se é uma chave da API REST do CurseForge for Studios." });
+    }
+    if (status === 403) {
+      return res.status(502).json({ ok: false, status, code: "FORBIDDEN", message: "A chave do CurseForge não tem permissão para esta API (HTTP 403)." });
+    }
+    if (status === 429) {
+      return res.status(502).json({ ok: false, status, code: "RATE_LIMIT", message: "O CurseForge limitou as requisições (HTTP 429). Tente novamente em alguns instantes." });
+    }
+    return res.status(502).json({
+      ok: false,
+      status: status || 0,
+      code: "API_ERROR",
+      message: "Não foi possível testar a API do CurseForge" + (status ? " (HTTP " + status + ")." : ".")
+    });
+  }
+});
+
 app.get("/api/mod-search", async (req, res) => {
   const source = String(req.query.source || "modrinth").trim().toLowerCase();
   const query = String(req.query.q || "").trim().slice(0, 120);
