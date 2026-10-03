@@ -971,6 +971,46 @@ app.post("/api/validate-links", async (req, res) => {
   res.json({ minecraftVersion, modLoader, results });
 });
 
+app.get("/api/curseforge-status", async (req, res) => {
+  if (!CURSEFORGE_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      configured: false,
+      status: 0,
+      message: "CURSEFORGE_API_KEY não está configurada no Render."
+    });
+  }
+  try {
+    const response = await axios.get(CURSEFORGE_API_BASE + "/mods/search", {
+      proxy: false,
+      timeout: 15000,
+      params: { gameId: CURSEFORGE_GAME_ID, pageSize: 1 },
+      headers: {
+        Accept: "application/json",
+        "x-api-key": CURSEFORGE_API_KEY,
+        "User-Agent": "Mikael-Modpack-Builder/8.4"
+      }
+    });
+    return res.json({
+      ok: true,
+      configured: true,
+      status: Number(response.status || 200),
+      message: "API CurseForge funcionando e a chave foi aceita."
+    });
+  } catch (e) {
+    const status = Number(e?.response?.status || 0);
+    if (status === 401) return res.status(502).json({ ok: false, configured: true, status, message: "Chave CurseForge inválida ou não autorizada (HTTP 401)." });
+    if (status === 403) return res.status(502).json({ ok: false, configured: true, status, message: "Chave CurseForge sem permissão para esta API (HTTP 403)." });
+    if (status === 429) return res.status(502).json({ ok: false, configured: true, status, message: "A API CurseForge atingiu o limite de requisições (HTTP 429). Aguarde e tente novamente." });
+    return res.status(502).json({
+      ok: false,
+      configured: true,
+      status,
+      message: status ? "A API CurseForge respondeu com HTTP " + status + "." : "Não foi possível conectar à API CurseForge."
+    });
+  }
+});
+
 app.get("/api/status", (req, res) => res.json({ ok: true, maxLinks: MAX_LINKS, maxFileMB: MAX_FILE_BYTES / 1024 / 1024, maxTotalMB: MAX_TOTAL_BYTES / 1024 / 1024 }));
 
 const cleanupTimer = setInterval(async () => {
