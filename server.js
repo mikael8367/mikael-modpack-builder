@@ -24,10 +24,10 @@ const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const UPLOAD_TTL_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 60 * 60 * 1000;
-const MAX_DOWNLOAD_RETRIES = 3;
+const MAX_DOWNLOAD_RETRIES = 6;
 const RETRY_BASE_MS = 700;
-const DOWNLOAD_TIMEOUT_MS = 120000;
-const API_RETRIES = 3;
+const DOWNLOAD_TIMEOUT_MS = 180000;
+const API_RETRIES = 5;
 const API_RETRY_BASE_MS = 800;
 const MODRINTH_MIN_REQUEST_INTERVAL_MS = 200;
 const MODRINTH_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -45,7 +45,7 @@ const CURSEFORGE_PUBLIC_PROXY_BASES = [...new Set(
     .map(value => value.replace(/\/+$/, "").replace(/\/v1$/i, ""))
     .filter(value => /^https:\/\//i.test(value))
 )];
-const CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS = 700;
+const CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS = 900;
 const CURSEFORGE_GAME_ID = 432;
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -59,7 +59,7 @@ let curseForgeProxyNextRequestAt = 0;
 let publicProviderNextRequestAt = 0;
 const publicProviderCache = new Map();
 const PUBLIC_PROVIDER_CACHE_TTL_MS = 5 * 60 * 1000;
-const PUBLIC_PROVIDER_MIN_REQUEST_INTERVAL_MS = 350;
+const PUBLIC_PROVIDER_MIN_REQUEST_INTERVAL_MS = 500;
 
 const http = require("http");
 const https = require("https");
@@ -317,7 +317,7 @@ async function publicProviderGet(base, pathname, params = {}, cacheKey = "", lab
           params,
           headers: {
             Accept: "application/json",
-            "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)"
+            "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)"
           }
         });
         return publicProviderPayload(response.data);
@@ -399,7 +399,7 @@ async function curseForgePublicProxyGet(pathname, params = {}) {
             params,
             headers: {
               Accept: "application/json",
-              "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)"
+              "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)"
             }
           });
           const payload = response.data && response.data.data;
@@ -474,7 +474,7 @@ async function curseForgeApiGet(pathname, params = {}) {
           proxy: false,
           timeout: 20000,
           params,
-          headers: { Accept: "application/json", ...(CURSEFORGE_API_KEY ? { "x-api-key": CURSEFORGE_API_KEY } : {}), "User-Agent": "Mikael-Modpack-Builder/8.9" }
+          headers: { Accept: "application/json", ...(CURSEFORGE_API_KEY ? { "x-api-key": CURSEFORGE_API_KEY } : {}), "User-Agent": "Mikael-Modpack-Builder/9.0" }
         });
         const payload = response.data && response.data.data;
         if (Array.isArray(payload) && response.data?.pagination) {
@@ -530,7 +530,7 @@ async function githubApiGet(pathname, config = {}, cacheKey = "") {
         headers: {
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)",
+          "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)",
           ...(config.headers || {})
         }
       });
@@ -869,7 +869,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
   try {
     project = await modrinthApiGet(
       "https://api.modrinth.com/v2/project/" + encodeURIComponent(slug),
-      { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)" } },
+      { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" } },
       "cf-fallback-project:" + slug
     );
   } catch (err) {
@@ -890,7 +890,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
           limit: 20
         },
         timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" }
       },
       "cf-fallback-search:" + slug + ":" + wantedVersion + ":" + wantedLoader
     );
@@ -912,7 +912,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
         include_changelog: false
       },
       timeout: 20000,
-      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)" }
+      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" }
     },
     "cf-fallback-versions:" + project.id + ":" + wantedVersion + ":" + wantedLoader
   );
@@ -1153,7 +1153,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -1184,7 +1184,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -1215,7 +1215,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -1280,7 +1280,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -1520,7 +1520,7 @@ async function getModrinthSearchPage(q, minecraftVersion, modLoader, page) {
     {
       params: { query: String(q || ""), facets: JSON.stringify(facets), index: "downloads", offset, limit },
       timeout: 20000,
-      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)" }
+      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" }
     },
     "mod-search-public:" + String(q || "") + ":" + minecraftVersion + ":" + loader + ":" + page
   );
@@ -1605,7 +1605,7 @@ app.get("/api/mod-versions", async (req, res) => {
       {
         params: { loaders: JSON.stringify([loader]), game_versions: JSON.stringify([minecraftVersion]), include_changelog: false },
         timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" }
       },
       "mod-versions-public:" + projectId + ":" + minecraftVersion + ":" + loader
     );
@@ -1695,7 +1695,7 @@ app.get("/api/curseforge-status", async (req, res) => {
         timeout: 15000,
         headers: {
           Accept: "application/json",
-          "User-Agent": "Mikael-Modpack-Builder/8.9 (https://github.com/mikael8367/mikael-modpack-builder)"
+          "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)"
         }
       },
       "public-api-status:1.12.2:forge"
