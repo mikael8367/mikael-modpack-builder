@@ -35,6 +35,7 @@ const API_CACHE_MAX_ENTRIES = 2000;
 const MAX_UPLOAD_FILES = 999;
 const CURSEFORGE_API_KEY = String(process.env.CURSEFORGE_API_KEY || "").trim();
 const CURSEFORGE_API_BASE = "https://api.curseforge.com/v1";
+const CURSEFORGE_PUBLIC_PROXY_BASE = "https://cfproxy.fly.dev";
 const CURSEFORGE_GAME_ID = 432;
 const modrinthCache = new Map();
 const curseForgeCache = new Map();
@@ -260,7 +261,7 @@ async function modrinthApiGet(url, config = {}, cacheKey = "") {
 }
 
 async function curseForgeApiGet(pathname, params = {}) {
-  if (!CURSEFORGE_API_KEY) throw new Error("CurseForge agora exige uma API Key para downloads automatizados. Configure CURSEFORGE_API_KEY no Render.");
+  const apiBase = CURSEFORGE_API_KEY ? CURSEFORGE_API_BASE : CURSEFORGE_PUBLIC_PROXY_BASE;
   const cacheKey = pathname + "?" + new URLSearchParams(Object.entries(params).map(([k,v]) => [k, String(v ?? "")])).toString();
   const now = Date.now();
   if (curseForgeCache.has(cacheKey)) {
@@ -272,11 +273,11 @@ async function curseForgeApiGet(pathname, params = {}) {
     let lastError;
     for (let retry = 0; retry < API_RETRIES; retry++) {
       try {
-        const response = await axios.get(CURSEFORGE_API_BASE + pathname, {
+        const response = await axios.get(apiBase + pathname, {
           proxy: false,
           timeout: 20000,
           params,
-          headers: { Accept: "application/json", "x-api-key": CURSEFORGE_API_KEY, "User-Agent": "Mikael-Modpack-Builder/8.6" }
+          headers: { Accept: "application/json", ...(CURSEFORGE_API_KEY ? { "x-api-key": CURSEFORGE_API_KEY } : {}), "User-Agent": "Mikael-Modpack-Builder/8.5" }
         });
         const payload = response.data && response.data.data;
         if (Array.isArray(payload) && response.data?.pagination) {
@@ -328,7 +329,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
   try {
     project = await modrinthApiGet(
       "https://api.modrinth.com/v2/project/" + encodeURIComponent(slug),
-      { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.6 (https://github.com/mikael8367/mikael-modpack-builder)" } },
+      { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.5 (https://github.com/mikael8367/mikael-modpack-builder)" } },
       "cf-fallback-project:" + slug
     );
   } catch (err) {
