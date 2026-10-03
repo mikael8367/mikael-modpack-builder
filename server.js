@@ -35,6 +35,15 @@ const API_CACHE_MAX_ENTRIES = 2000;
 const MAX_UPLOAD_FILES = 999;
 const CURSEFORGE_API_KEY = String(process.env.CURSEFORGE_API_KEY || "").trim();
 const CURSEFORGE_API_BASE = "https://api.curseforge.com/v1";
+const CURSEFORGE_PUBLIC_PROXY_BASES = [...new Set(
+  String(process.env.CURSEFORGE_PUBLIC_PROXY_URLS || "https://cfproxy.fly.dev")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean)
+    .map(value => value.replace(/\/+$/, "").replace(/\/v1$/i, ""))
+    .filter(value => /^https:\/\//i.test(value))
+)];
+const CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS = 700;
 const CURSEFORGE_GAME_ID = 432;
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -44,6 +53,7 @@ const curseForgeCache = new Map();
 const githubCache = new Map();
 let modrinthNextRequestAt = 0;
 let githubNextRequestAt = 0;
+let curseForgeProxyNextRequestAt = 0;
 
 const http = require("http");
 const https = require("https");
@@ -264,6 +274,99 @@ async function modrinthApiGet(url, config = {}, cacheKey = "") {
   return request;
 }
 
+async function waitForCurseForgeProxySlot() {
+  const now = Date.now();
+  const slot = Math.max(now, curseForgeProxyNextRequestAt);
+  const wait = Math.max(0, slot - now);
+  curseForgeProxyNextRequestAt = slot + CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS;
+  if (wait) await sleep(wait);
+}
+
+async function curseForgePublicProxyGet(pathname, params = {}) {
+  if (!CURSEFORGE_PUBLIC_PROXY_BASES.length) {
+    const err = new Error("Nenhum proxy público do CurseForge foi configurado.");
+    err.code = "CURSEFORGE_PROXY_NOT_CONFIGURED";
+    throw err;
+  }
+
+  const query = new URLSearchParams(
+    Object.entries(params).map(([key, value]) => [key, String(value ?? "")])
+  ).toString();
+
+  let lastError = null;
+  for (const base of CURSEFORGE_PUBLIC_PROXY_BASES) {
+    const cacheKey = "cfproxy:" + base + pathname + "?" + query;
+    const now = Date.now();
+    if (curseForgeCache.has(cacheKey)) {
+      const hit = curseForgeCache.get(cacheKey);
+      if (hit.expires > now) return hit.promise ? hit.promise : hit.value;
+      curseForgeCache.delete(cacheKey);
+    }
+
+    const request = (async () => {
+      let error = null;
+      for (let retry = 0; retry < API_RETRIES; retry++) {
+        await waitForCurseForgeProxySlot();
+        try {
+          const response = await axios.get(base + "/v1" + pathname, {
+            proxy: false,
+            timeout: 20000,
+            params,
+            headers: {
+              Accept: "application/json",
+              "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)"
+            }
+          });
+          const payload = response.data && response.data.data;
+          if (Array.isArray(payload) && response.data?.pagination) {
+            Object.defineProperty(payload, "__pagination", {
+              value: response.data.pagination,
+              enumerable: false,
+              configurable: true
+            });
+          }
+          return payload;
+        } catch (err) {
+          error = err;
+          const status = Number(err?.response?.status || 0);
+          if (![429, 500, 502, 503, 504].includes(status) || retry === API_RETRIES - 1) break;
+          const retryAfter = retryAfterMs(err.response?.headers || {});
+          if (retryAfter > 0) await sleep(Math.min(60000, retryAfter));
+          else await apiDelay(retry);
+        }
+      }
+      throw error || new Error("Proxy público do CurseForge indisponível.");
+    })();
+
+    curseForgeCache.set(cacheKey, {
+      expires: Date.now() + MODRINTH_CACHE_TTL_MS,
+      promise: request
+    });
+
+    try {
+      const value = await request;
+      if (value != null) {
+        curseForgeCache.set(cacheKey, {
+          expires: Date.now() + MODRINTH_CACHE_TTL_MS,
+          value
+        });
+      } else {
+        curseForgeCache.delete(cacheKey);
+      }
+      return value;
+    } catch (err) {
+      lastError = err;
+      if (curseForgeCache.get(cacheKey)?.promise === request) {
+        curseForgeCache.delete(cacheKey);
+      }
+    }
+  }
+
+  const error = lastError || new Error("Nenhum proxy público do CurseForge respondeu.");
+  error.code = error.code || "CURSEFORGE_PROXY_UNAVAILABLE";
+  throw error;
+}
+
 async function curseForgeApiGet(pathname, params = {}) {
   if (!CURSEFORGE_API_KEY) {
     const err = new Error("A API oficial do CurseForge exige uma chave. O Builder usará fontes públicas de fallback.");
@@ -342,7 +445,7 @@ async function githubApiGet(pathname, config = {}, cacheKey = "") {
         headers: {
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
-          "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)",
+          "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)",
           ...(config.headers || {})
         }
       });
@@ -447,6 +550,101 @@ async function resolveGithubReleaseMirror(project, context = {}) {
   return null;
 }
 
+async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
+  let u;
+  try { u = new URL(rawUrl); } catch { return rawUrl; }
+  if (!isCurseForgeHost(u.hostname)) return rawUrl;
+
+  const parts = u.pathname.split("/").filter(Boolean);
+  const normalizedParts = parts.map(p => p.toLowerCase());
+  const modIndex = normalizedParts.indexOf("mc-mods");
+  if (modIndex < 0 || !parts[modIndex + 1]) return rawUrl;
+
+  let slug;
+  try { slug = decodeURIComponent(parts[modIndex + 1]); } catch {
+    throw new Error("Slug do CurseForge inválido.");
+  }
+
+  const wantedVersion = String(context.minecraftVersion || "").trim();
+  const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
+  const loaderType = loaderMap[String(context.modLoader || "")];
+  const fileId = parseCurseForgeFileId(parts.slice(modIndex + 1));
+
+  let project = null;
+  try {
+    const search = await curseForgePublicProxyGet("/mods/search", {
+      gameId: CURSEFORGE_GAME_ID,
+      slug,
+      pageSize: 1,
+      index: 0
+    });
+    project = Array.isArray(search) ? search[0] : null;
+  } catch {
+    throw new Error("Proxy público do CurseForge não conseguiu localizar " + slug + ".");
+  }
+
+  if (!project?.id) throw new Error("Mod CurseForge não encontrado no proxy público: " + slug + ".");
+
+  if (fileId) {
+    const file = await curseForgePublicProxyGet("/mods/" + project.id + "/files/" + fileId);
+    if (!file?.id) throw new Error("Arquivo CurseForge " + fileId + " não foi encontrado no proxy público.");
+    if (!isReleasedCurseForgeFile(file)) throw new Error("O arquivo CurseForge " + fileId + " não está liberado.");
+    if (wantedVersion && (!Array.isArray(file.gameVersions) || !file.gameVersions.includes(wantedVersion))) {
+      throw new Error("O arquivo CurseForge " + fileId + " não suporta Minecraft " + wantedVersion + ".");
+    }
+    if (file.isServerPack === true) throw new Error("O arquivo CurseForge " + fileId + " é um server pack.");
+    context.expectedHashes = file.hashes || null;
+    context.expectedSize = Number(file.fileLength || 0) || null;
+    context.publicProxyUsed = true;
+    context.resolvedFrom = "CurseForge public proxy";
+    context.fallbackProject = String(project.name || project.slug || slug);
+    let downloadUrl = file.downloadUrl || "";
+    if (!downloadUrl) {
+      downloadUrl = await curseForgePublicProxyGet("/mods/" + project.id + "/files/" + fileId + "/download-url");
+    }
+    if (!downloadUrl) throw new Error("O proxy público não forneceu uma URL para o arquivo CurseForge " + fileId + ".");
+    return String(downloadUrl);
+  }
+
+  if (!wantedVersion || !loaderType) {
+    throw new Error("Para links de projeto do CurseForge, selecione Minecraft e um modloader conhecido.");
+  }
+
+  const files = await curseForgePublicProxyGet("/mods/" + project.id + "/files", {
+    gameVersion: wantedVersion,
+    modLoaderType: loaderType,
+    pageSize: 50,
+    sortField: 11,
+    sortOrder: "desc"
+  });
+
+  const candidates = Array.isArray(files)
+    ? files.filter(f =>
+        isReleasedCurseForgeFile(f) &&
+        Array.isArray(f.gameVersions) &&
+        f.gameVersions.includes(wantedVersion)
+      )
+    : [];
+
+  const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates[0];
+  if (!selected) {
+    throw new Error("Nenhum arquivo compatível de " + slug + " foi encontrado no proxy público.");
+  }
+
+  context.expectedHashes = selected.hashes || null;
+  context.expectedSize = Number(selected.fileLength || 0) || null;
+  context.publicProxyUsed = true;
+  context.resolvedFrom = "CurseForge public proxy";
+  context.fallbackProject = String(project.name || project.slug || slug);
+
+  let downloadUrl = selected.downloadUrl || "";
+  if (!downloadUrl) {
+    downloadUrl = await curseForgePublicProxyGet("/mods/" + project.id + "/files/" + selected.id + "/download-url");
+  }
+  if (!downloadUrl) throw new Error("O proxy público não forneceu uma URL para " + slug + ".");
+  return String(downloadUrl);
+}
+
 async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
   let u;
   try { u = new URL(rawUrl); } catch { return rawUrl; }
@@ -470,7 +668,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
   try {
     project = await modrinthApiGet(
       "https://api.modrinth.com/v2/project/" + encodeURIComponent(slug),
-      { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)" } },
+      { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)" } },
       "cf-fallback-project:" + slug
     );
   } catch (err) {
@@ -491,7 +689,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
           limit: 20
         },
         timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)" }
       },
       "cf-fallback-search:" + slug + ":" + wantedVersion + ":" + wantedLoader
     );
@@ -513,7 +711,7 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
         include_changelog: false
       },
       timeout: 20000,
-      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)" }
+      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)" }
     },
     "cf-fallback-versions:" + project.id + ":" + wantedVersion + ":" + wantedLoader
   );
@@ -562,9 +760,24 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   try { u = new URL(rawUrl); } catch { return rawUrl; }
   if (!isCurseForgeHost(u.hostname)) return rawUrl;
 
-  // Sem chave oficial, usa a API pública do Modrinth como fallback para encontrar
-  // um equivalente compatível. Com chave, mantém a resolução oficial do CurseForge.
-  if (!CURSEFORGE_API_KEY) return resolveCurseForgeViaModrinth(rawUrl, context);
+  // Sem chave oficial, tenta primeiro o proxy público da CurseForge para obter
+  // metadados/URL e depois usa Modrinth/GitHub como fallback real de arquivo.
+  if (!CURSEFORGE_API_KEY) {
+    try {
+      return await resolveCurseForgeViaPublicProxy(rawUrl, context);
+    } catch (proxyError) {
+      try {
+        return await resolveCurseForgeViaModrinth(rawUrl, context);
+      } catch (fallbackError) {
+        const fallbackParts = u.pathname.split("/").filter(Boolean).map(part => part.toLowerCase());
+        if (fallbackParts.includes("download") || fallbackParts.includes("files")) {
+          context.resolvedFrom = "CurseForge website (last resort)";
+          return rawUrl;
+        }
+        throw fallbackError;
+      }
+    }
+  }
 
   const parts = u.pathname.split("/").filter(Boolean);
   const normalizedParts = parts.map(p => p.toLowerCase());
@@ -617,7 +830,13 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
     return String(selected.downloadUrl);
   } catch (err) {
     const status = Number(err?.response?.status || 0);
-    if (status === 401 || status === 403) return resolveCurseForgeViaModrinth(rawUrl, context);
+    if (status === 401 || status === 403) {
+      try {
+        return await resolveCurseForgeViaPublicProxy(rawUrl, context);
+      } catch (proxyError) {
+        return resolveCurseForgeViaModrinth(rawUrl, context);
+      }
+    }
     throw err;
   }
 }
@@ -710,7 +929,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet("https://api.modrinth.com/v2/version/" + encodeURIComponent(versionId), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8" }
       }, "version:" + versionId);
       const version = response;
       if (!version || !version.id) throw new Error("Versão do Modrinth inválida.");
@@ -741,7 +960,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const project = await modrinthApiGet("https://api.modrinth.com/v2/project/" + encodeURIComponent(slug), {
         proxy: false, timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8" }
       }, "project:" + slug);
       projectData = project;
     } catch (err) {
@@ -772,7 +991,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
     try {
       const response = await modrinthApiGet(
         "https://api.modrinth.com/v2/project/" + encodeURIComponent(projectData.id) + "/version?" + params.toString(),
-        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7" } },
+        { timeout: 20000, headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8" } },
         "versions:" + projectData.id + ":" + selectedMinecraft + ":" + loader
       );
       versions = response;
@@ -821,6 +1040,9 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
 
 async function requestFile(rawUrl, context = {}) {
   let current = await resolveCurseForgeUrl(rawUrl, context);
+  let curseForgeSource = false;
+  try { curseForgeSource = isCurseForgeHost(new URL(rawUrl).hostname); } catch {}
+  let triedPublicModrinthAfterCdn = false;
   current = await resolveModrinthUrl(current, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const checked = await validatePublicUrl(current);
@@ -834,7 +1056,7 @@ async function requestFile(rawUrl, context = {}) {
     };
     const isModrinthDownload = checked.url.hostname.toLowerCase() === "cdn.modrinth.com" || checked.url.hostname.toLowerCase().endsWith(".cdn.modrinth.com");
     const headers = {
-      "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)",
+      "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)",
       Accept: isModrinthDownload ? "application/java-archive, application/zip, application/octet-stream, */*" : "*/*"
     };
     if (isModrinthDownload) headers["Referer"] = "https://modrinth.com/";
@@ -857,7 +1079,17 @@ async function requestFile(rawUrl, context = {}) {
       }
       const status = err && err.response && err.response.status;
       if ((status === 401 || status === 403) && isCurseForgeHost(checked.url.hostname)) {
-        throw new Error("CurseForge recusou o download (HTTP " + status + "). O Builder já tentou as fontes públicas de fallback; para o arquivo original do CurseForge é necessária uma chave oficial.");
+        if (curseForgeSource && !triedPublicModrinthAfterCdn && !CURSEFORGE_API_KEY) {
+          triedPublicModrinthAfterCdn = true;
+          try {
+            const fallbackUrl = await resolveCurseForgeViaModrinth(rawUrl, context);
+            if (fallbackUrl && fallbackUrl !== current) {
+              current = await resolveModrinthUrl(fallbackUrl, context);
+              continue;
+            }
+          } catch {}
+        }
+        throw new Error("CurseForge recusou o download (HTTP " + status + "). O Builder tentou proxy público, Modrinth e GitHub; este arquivo ainda precisa de uma fonte pública compatível.");
       }
       throw err;
     }
@@ -1050,7 +1282,7 @@ async function getModrinthSearchPage(q, minecraftVersion, modLoader, page) {
     {
       params: { query: String(q || ""), facets: JSON.stringify(facets), index: "downloads", offset, limit },
       timeout: 20000,
-      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)" }
+      headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)" }
     },
     "mod-search-public:" + String(q || "") + ":" + minecraftVersion + ":" + loader + ":" + page
   );
@@ -1135,7 +1367,7 @@ app.get("/api/mod-versions", async (req, res) => {
       {
         params: { loaders: JSON.stringify([loader]), game_versions: JSON.stringify([minecraftVersion]), include_changelog: false },
         timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)" }
+        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)" }
       },
       "mod-versions-public:" + projectId + ":" + minecraftVersion + ":" + loader
     );
@@ -1162,41 +1394,101 @@ app.get("/api/mod-versions", async (req, res) => {
 });
 
 app.get("/api/curseforge-status", async (req, res) => {
-  if (!CURSEFORGE_API_KEY) {
+  const providers = [];
+
+  if (CURSEFORGE_API_KEY) {
     try {
-      const data = await modrinthApiGet("https://api.modrinth.com/v2/search", {
-        params: { query: "journeymap", facets: JSON.stringify([["project_type:mod"], ["versions:1.12.2"], ["categories:forge"]]), limit: 1, offset: 0 },
-        timeout: 15000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/8.7 (https://github.com/mikael8367/mikael-modpack-builder)" }
-      }, "public-api-status:1.12.2:forge");
-      const count = Array.isArray(data?.hits) ? data.hits.length : 0;
-      return res.json({
-        ok: true,
-        publicApi: true,
-        status: 200,
-        code: "PUBLIC_MODRINTH_OK",
-        message: "API pública do Modrinth funcionando. O Builder pode usar o Modrinth como fallback para links do CurseForge."
+      await curseForgeApiGet("/mods/search", {
+        gameId: CURSEFORGE_GAME_ID,
+        classId: 6,
+        pageSize: 1,
+        index: 0
       });
+      providers.push({ name: "CurseForge oficial", ok: true, status: 200, code: "OK" });
     } catch (e) {
-      return res.status(502).json({
+      providers.push({
+        name: "CurseForge oficial",
         ok: false,
-        publicApi: true,
         status: Number(e?.response?.status || 0),
-        code: "PUBLIC_API_ERROR",
-        message: "A API pública do Modrinth não respondeu corretamente."
+        code: Number(e?.response?.status || 0) === 403 ? "FORBIDDEN" : "ERROR"
+      });
+    }
+  } else {
+    providers.push({ name: "CurseForge oficial", ok: false, status: 0, code: "NO_KEY" });
+  }
+
+  for (const base of CURSEFORGE_PUBLIC_PROXY_BASES) {
+    try {
+      await curseForgePublicProxyGet("/mods/search", {
+        gameId: CURSEFORGE_GAME_ID,
+        classId: 6,
+        pageSize: 1,
+        index: 0
+      });
+      providers.push({ name: "CurseForge public proxy", ok: true, status: 200, code: "OK", endpoint: base });
+    } catch (e) {
+      providers.push({
+        name: "CurseForge public proxy",
+        ok: false,
+        status: Number(e?.response?.status || 0),
+        code: "UNAVAILABLE",
+        endpoint: base
       });
     }
   }
+
   try {
-    await curseForgeApiGet("/mods/search", { gameId: CURSEFORGE_GAME_ID, classId: 6, pageSize: 1, index: 0 });
-    return res.json({ ok: true, publicApi: false, status: 200, code: "OK", message: "A API do CurseForge respondeu corretamente. A chave configurada no Render está sendo aceita." });
+    await modrinthApiGet(
+      "https://api.modrinth.com/v2/search",
+      {
+        params: {
+          query: "journeymap",
+          facets: JSON.stringify([["project_type:mod"], ["versions:1.12.2"], ["categories:forge"]]),
+          limit: 1,
+          offset: 0
+        },
+        timeout: 15000,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mikael-Modpack-Builder/8.8 (https://github.com/mikael8367/mikael-modpack-builder)"
+        }
+      },
+      "public-api-status:1.12.2:forge"
+    );
+    providers.push({ name: "Modrinth público", ok: true, status: 200, code: "OK" });
   } catch (e) {
-    const status = Number(e?.response?.status || 0);
-    if (status === 401) return res.status(502).json({ ok: false, publicApi: false, status, code: "INVALID_KEY", message: "A chave do CurseForge foi recusada (HTTP 401). O Builder ainda pode usar a API pública do Modrinth como fallback." });
-    if (status === 403) return res.status(502).json({ ok: false, publicApi: false, status, code: "FORBIDDEN", message: "A chave do CurseForge não tem permissão (HTTP 403). O Builder tentará a API pública do Modrinth como fallback." });
-    if (status === 429) return res.status(502).json({ ok: false, publicApi: false, status, code: "RATE_LIMIT", message: "O CurseForge limitou as requisições (HTTP 429)." });
-    return res.status(502).json({ ok: false, publicApi: false, status: status || 0, code: "API_ERROR", message: "Não foi possível testar a API do CurseForge." });
+    providers.push({
+      name: "Modrinth público",
+      ok: false,
+      status: Number(e?.response?.status || 0),
+      code: "UNAVAILABLE"
+    });
   }
+
+  try {
+    await githubApiGet("/rate_limit", {}, "public-github-status");
+    providers.push({ name: "GitHub público", ok: true, status: 200, code: "OK" });
+  } catch (e) {
+    providers.push({
+      name: "GitHub público",
+      ok: false,
+      status: Number(e?.response?.status || 0),
+      code: "UNAVAILABLE"
+    });
+  }
+
+  const usable = providers.filter(p => p.ok);
+  const publicUsable = providers.filter(p => p.ok && p.name !== "CurseForge oficial");
+
+  return res.status(usable.length ? 200 : 502).json({
+    ok: usable.length > 0,
+    publicApi: publicUsable.length > 0,
+    status: usable.length ? 200 : 502,
+    providers,
+    message: usable.length
+      ? "Fontes de download disponíveis: " + usable.map(p => p.name).join(", ") + "."
+      : "Nenhuma fonte pública respondeu."
+  });
 });
 
 app.get("/api/status", (req, res) => res.json({ ok: true, maxLinks: MAX_LINKS, maxFileMB: MAX_FILE_BYTES / 1024 / 1024, maxTotalMB: MAX_TOTAL_BYTES / 1024 / 1024 }));
@@ -1576,5 +1868,6 @@ module.exports = {
   jobs,
   uploads,
   modrinthCache,
-  curseForgeCache
+  curseForgeCache,
+  CURSEFORGE_PUBLIC_PROXY_BASES
 };
