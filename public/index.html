@@ -91,7 +91,7 @@ async function refreshBuildLogs(id){
   try{
     const r=await fetch('/api/build/'+encodeURIComponent(id)+'/status',{cache:'no-store'});
     const j=await r.json().catch(()=>({}));
-    if(r.ok)renderBuildLogs(j.failures||j.progress?.failures||[]);
+    if(r.ok){const failures=j.failures||j.progress?.failures||[];renderBuildLogs(failures.length?failures:(j.status==='error'?[{name:'Falha ao gerar ZIP',url:'',error:j.progress?.message||'O build falhou antes de concluir os downloads.'}]:failures));}
   }catch{}
 }
 document.getElementById('showBuildLogs').addEventListener('click',async()=>{
