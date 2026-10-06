@@ -89,8 +89,8 @@ function renderBuildLogs(failures, logs){
     const level=String(item.level||'info').toLowerCase();
     const cls=level==='error'?'error':level==='success'?'success':level==='warn'?'warn':'';
     const time=item.time?new Date(item.time).toLocaleTimeString('pt-BR'):'';
-    const details=item.details&&typeof item.details==='object'?'\\n'+Object.entries(item.details).map(([k,v])=>k+': '+(typeof v==='string'?v:JSON.stringify(v))).join('\\n'):'';
-    return '<div class="build-log-entry '+cls+'"><b>'+esc(time?'['+time+'] ':''+(item.level?'['+item.level+'] ':'')+esc(item.message||'Evento')+'</b>'+(details?'<div class="build-log-details">'+esc(details)+'</div>':'')+'</div>';
+    const details=item.details&&typeof item.details==='object'?'\n'+Object.entries(item.details).map(([k,v])=>k+': '+(typeof v==='string'?v:JSON.stringify(v))).join('\n'):'';
+    return '<div class="build-log-entry '+cls+'"><b>'+esc((time?'['+time+'] ':'')+'['+String(item.level||'info').toUpperCase()+'] '+String(item.message||'Evento'))+'</b>'+(details?'<div class="build-log-details">'+esc(details)+'</div>':'')+'</div>';
   }).join('');
   const failureHtml=currentBuildFailures.map((item,i)=>'<div class="validation-item error"><b>'+(i+1)+'. '+esc(item.name||item.filename||'Download falhou')+'</b><div style="margin-top:5px;word-break:break-all">'+esc(item.url||'URL não informada')+'</div><div style="margin-top:5px">❌ '+esc(item.error||'Falha desconhecida')+'</div></div>').join('');
   summary.textContent=currentBuildLogEntries.length+' eventos detalhados • '+currentBuildFailures.length+' falhas finais.';
@@ -104,7 +104,7 @@ function getBuildLogsPlainText(){
     if(item.details&&typeof item.details==='object')for(const [key,value] of Object.entries(item.details))lines.push('  '+key+': '+(typeof value==='string'?value:JSON.stringify(value)));
   }
   if(currentBuildFailures.length){lines.push('','FALHAS FINAIS');currentBuildFailures.forEach((f,i)=>lines.push((i+1)+'. '+(f.name||f.filename||'Download falhou'),'URL: '+(f.url||'não informada'),'Erro: '+(f.error||'desconhecido')));}
-  return lines.join('\\n');
+  return lines.join('\n');
 }
 document.getElementById('copyBuildLogs').addEventListener('click',async()=>{
   const text=getBuildLogsPlainText();
