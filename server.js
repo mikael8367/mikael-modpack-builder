@@ -1262,12 +1262,27 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   }
 }
 
+function rewriteCurseForgeCdnMirror(rawUrl, context = {}) {
+  // MCIM documents these CDN host replacements for public mirror downloads.
+  // Keep the official CDN when an official key is configured and no fallback was used.
+  if (CURSEFORGE_API_KEY && !context.publicSourceActive && !context.publicApiFallback && !context.publicProxyUsed) return rawUrl;
+  try {
+    const url = new URL(String(rawUrl || ""));
+    const host = url.hostname.toLowerCase();
+    if (host === "edge.forgecdn.net" || host === "mediafilez.forgecdn.net") {
+      url.hostname = "mod.mcimirror.top";
+      return url.toString();
+    }
+  } catch {}
+  return rawUrl;
+}
+
 async function requestFile(rawUrl, context = {}) {
   let current = await resolveCurseForgeUrl(rawUrl, context);
   let curseForgeSource = false;
   try { curseForgeSource = isCurseForgeHost(new URL(rawUrl).hostname); } catch {}
   let triedPublicModrinthAfterCdn = false;
-  current = await resolveModrinthUrl(current, context);
+  current = await resolveModrinthUrl(current, context);\n  current = rewriteCurseForgeCdnMirror(current, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const checked = await validatePublicUrl(current);
     const agentOptions = {
@@ -1335,7 +1350,7 @@ async function requestFile(rawUrl, context = {}) {
       const location = response.headers.location;
       response.data.destroy();
       if (!location) throw new Error("Redirecionamento sem destino.");
-      current = new URL(location, checked.url).toString();
+      current = rewriteCurseForgeCdnMirror(new URL(location, checked.url).toString(), context);
       continue;
     }
     const contentType = String(response.headers["content-type"] || "").toLowerCase();
