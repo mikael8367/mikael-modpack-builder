@@ -1789,6 +1789,19 @@ app.get("/api/build/:id/events", (req, res) => {
   req.on("close", () => { clearInterval(timer); job.clients.delete(res); });
 });
 
+function addJobLog(job, level, message, details = {}) {
+  if (!job) return;
+  if (!Array.isArray(job.logs)) job.logs = [];
+  const safeDetails = {};
+  for (const [key, value] of Object.entries(details || {})) {
+    if (value == null || typeof value === "number" || typeof value === "boolean") safeDetails[key] = value;
+    else if (typeof value === "string") safeDetails[key] = /url/i.test(key) ? redactUrl(value) : value.slice(0, 1200);
+    else safeDetails[key] = JSON.stringify(value).slice(0, 1200);
+  }
+  job.logs.push({ time: new Date().toISOString(), level: String(level || "info"), message: String(message || "Evento"), details: safeDetails });
+  if (job.logs.length > 4000) job.logs.splice(0, job.logs.length - 4000);
+}
+
 function updateJob(job, data) {
   const previous = job.progress || {};
   const merged = { ...previous, ...data };
@@ -1835,6 +1848,7 @@ app.get("/api/build/:id/status", (req, res) => {
     status: job.status,
     progress: job.progress,
     failures: Array.isArray(job.progress?.failures) ? job.progress.failures : [],
+    logs: Array.isArray(job.logs) ? job.logs : [],
     zipName: job.zipName || null,
     downloadUrl: job.status === "done" && job.zipPath ? "/api/build/" + encodeURIComponent(req.params.id) + "/download" : null
   });
@@ -1863,8 +1877,10 @@ app.post("/api/build", async (req, res) => {
     tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-modpack-"));
     const job = {
       tempDir, zipPath: null, zipName: null, status: "running", created: Date.now(), lastAccess: Date.now(), downloads: 0, clients: new Set(),
-      progress: { status: "starting", current: 0, total: uniqueLinks.length, percent: 0, filename: "", message: "Iniciando..." }
+      progress: { status: "starting", current: 0, total: uniqueLinks.length, percent: 0, filename: "", message: "Iniciando..." },
+      logs: []
     };
+    addJobLog(job, "info", "Build iniciado", { minecraftVersion, modLoader, loaderVersion: loaderVersion || "não informado", links: uniqueLinks.length, localFiles: uploadId ? (uploads.get(uploadId)?.files?.length || 0) : 0, officialCurseForgeKeyConfigured: Boolean(CURSEFORGE_API_KEY), publicResolvers: CURSEFORGE_PUBLIC_PROXY_BASES.map(x => new URL(x).hostname) });
     jobs.set(id, job);
     localUpload = uploadId ? uploads.get(uploadId) : null;
     if (uploadId && !localUpload) {
@@ -1919,13 +1935,16 @@ app.post("/api/build", async (req, res) => {
           let lastProgressAt = 0;
 
           const context = { minecraftVersion, modLoader };
+          addJobLog(job, "info", "Download iniciado", { index: i + 1, originalUrl: raw, minecraftVersion, modLoader });
           for (let attempt = 1; attempt <= MAX_DOWNLOAD_RETRIES && !success; attempt++) {
+            addJobLog(job, "info", "Tentativa de download", { index: i + 1, attempt, maxAttempts: MAX_DOWNLOAD_RETRIES, originalUrl: raw });
             let response = null;
             let bytes = 0;
             try {
               const result = await requestFile(raw, context);
               response = result.response;
               const url = result.url;
+              addJobLog(job, "info", "URL resolvida; iniciando transferência", { index: i + 1, attempt, originalUrl: raw, resolvedUrl: url.toString(), resolvedFrom: context.resolvedFrom || (context.publicApiFallback ? "fonte pública alternativa" : "URL direta"), fallbackProject: context.fallbackProject || "", publicApiFallback: Boolean(context.publicApiFallback), publicProxyUsed: Boolean(context.publicProxyUsed), expectedSize: context.expectedSize || null, expectedHashes: context.expectedHashes || null, httpStatus: response.status, contentType: response.headers["content-type"] || "não informado", contentLength: response.headers["content-length"] || "não informado" });
 
               if (!filename) {
                 const fromHeader = parseContentDispositionFilename(response.headers["content-disposition"]);
@@ -1984,9 +2003,12 @@ app.post("/api/build", async (req, res) => {
               }
               if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
               await validateArchiveFile(target, filename);
+              addJobLog(job, "success", "Arquivo reconhecido como JAR/ZIP válido", { index: i + 1, filename, bytes });
               await verifyFileIntegrity(target, context.expectedHashes, filename);
+              addJobLog(job, "success", "Integridade do arquivo verificada", { index: i + 1, filename, bytes, hashVerification: context.expectedHashes ? "hashes publicados verificados" : "nenhum hash publicado disponível" });
 
               files.push({ filename, target, source: raw, size: bytes, resolvedFrom: context.resolvedFrom || null });
+              addJobLog(job, "success", "Download concluído", { index: i + 1, filename, bytes, originalUrl: raw, resolvedFrom: context.resolvedFrom || (context.publicApiFallback ? "fonte pública alternativa" : "URL direta"), publicApiFallback: Boolean(context.publicApiFallback), publicProxyUsed: Boolean(context.publicProxyUsed) });
               success = true;
               updateJob(job, {
                 current: completed + 1,
@@ -1997,6 +2019,8 @@ app.post("/api/build", async (req, res) => {
               });
             } catch (e) {
               lastError = e;
+              const retryable = isRetryableDownloadError(e);
+              addJobLog(job, attempt < MAX_DOWNLOAD_RETRIES && retryable ? "warn" : "error", "Tentativa de download falhou", { index: i + 1, attempt, maxAttempts: MAX_DOWNLOAD_RETRIES, originalUrl: raw, filename: filename || "ainda não identificado", error: e.message || String(e), code: e.code || "", httpStatus: Number(e?.response?.status || e?.status || 0) || null, retryable, bytesReceived: bytes });
               total = Math.max(0, total - bytes);
               if (reservedForThis > 0) {
                 reservedBytes = Math.max(0, reservedBytes - reservedForThis);
@@ -2004,15 +2028,21 @@ app.post("/api/build", async (req, res) => {
               }
               if (target) await fsp.rm(target, { force: true }).catch(() => {});
               if (response && response.data) response.data.destroy();
-              if (attempt < MAX_DOWNLOAD_RETRIES && isRetryableDownloadError(e)) {
-                await sleep(RETRY_BASE_MS * Math.pow(2, attempt - 1));
+              if (attempt < MAX_DOWNLOAD_RETRIES && retryable) {
+                const retryDelay = RETRY_BASE_MS * Math.pow(2, attempt - 1);
+                addJobLog(job, "warn", "Aguardando antes de repetir download", { index: i + 1, nextAttempt: attempt + 1, delayMs: retryDelay });
+                await sleep(retryDelay);
               } else {
                 break;
               }
             }
           }
 
-          if (!success) failures.push({ url: raw, error: lastError && lastError.message ? lastError.message : "Falha no download." });
+          if (!success) {
+            const failure = { url: raw, name: filename || undefined, filename: filename || undefined, error: lastError && lastError.message ? lastError.message : "Falha no download." };
+            failures.push(failure);
+            addJobLog(job, "error", "Download esgotou todas as tentativas", { index: i + 1, originalUrl: raw, filename: filename || "não identificado", attempts: MAX_DOWNLOAD_RETRIES, finalError: failure.error, code: lastError?.code || "", httpStatus: Number(lastError?.response?.status || lastError?.status || 0) || null });
+          }
           completedLinks += 1;
           completed += 1;
           updateJob(job, {
@@ -2034,6 +2064,7 @@ app.post("/api/build", async (req, res) => {
         });
         await Promise.all(workers);
 
+        addJobLog(job, failures.length ? "warn" : "success", "Downloads finalizados", { requestedLinks: uniqueLinks.length, downloadedFiles: files.length, failedLinks: failures.length, downloadedBytes: total, failed: failures.map(f => ({ url: redactUrl(f.url), error: f.error })) });
         if (!files.length) throw new Error("Nenhum arquivo válido pôde ser incluído no ZIP.");
         const orderedFiles = [...files].sort((a, b) => String(a.filename).localeCompare(String(b.filename), "en", { sensitivity: "base" }) || String(a.source).localeCompare(String(b.source), "en"));
         updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
@@ -2064,6 +2095,7 @@ app.post("/api/build", async (req, res) => {
         });
         const zipStat = await fsp.stat(zipPath);
         if (!zipStat.size) throw new Error("O ZIP gerado ficou vazio.");
+        addJobLog(job, "success", "ZIP criado e validado", { zipName, zipBytes: zipStat.size, filesInZip: orderedFiles.length, manifest: "mikael-modpack.json", failedLinks: failures.length });
         job.zipPath = zipPath;
         job.zipName = zipName;
         job.status = "done";
@@ -2071,6 +2103,7 @@ app.post("/api/build", async (req, res) => {
         updateJob(job, { status: "done", percent: 100, current: job.progress.total, message: failures.length ? `⚠️ ZIP pronto: ${files.length} baixados, ${failures.length} com erro.` : "✅ Todos os mods foram instalados e o ZIP está pronto!", failures });
       } catch (e) {
         job.status = "error";
+        addJobLog(job, "error", "Build falhou", { error: e.message || "Não foi possível gerar o ZIP.", code: e.code || "", httpStatus: Number(e?.response?.status || e?.status || 0) || null, stack: String(e.stack || "").slice(0, 3000) });
         updateJob(job, { status: "error", message: "❌ " + (e.message || "Não foi possível gerar o ZIP."), percent: 0 });
         await fsp.rm(tempDir, { recursive: true, force: true }).catch(() => {});
       } finally {
