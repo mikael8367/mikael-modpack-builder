@@ -1282,7 +1282,8 @@ async function requestFile(rawUrl, context = {}) {
   let curseForgeSource = false;
   try { curseForgeSource = isCurseForgeHost(new URL(rawUrl).hostname); } catch {}
   let triedPublicModrinthAfterCdn = false;
-  current = await resolveModrinthUrl(current, context);\n  current = rewriteCurseForgeCdnMirror(current, context);
+  current = await resolveModrinthUrl(current, context);
+  current = rewriteCurseForgeCdnMirror(current, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
     const checked = await validatePublicUrl(current);
     const agentOptions = {
