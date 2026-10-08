@@ -1015,13 +1015,50 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       pageSize: 50,
       index: 0
     });
-    const officialHits = Array.isArray(mod) ? mod : [];
-    const found = officialHits.find(hit =>
+    let officialHits = Array.isArray(mod) ? mod : [];
+    let found = officialHits.find(hit =>
       String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase()
     ) || officialHits.find(hit =>
       String(hit?.name || "").toLowerCase().replace(/\s+/g, "-") === String(slug).toLowerCase()
     ) || null;
-    if (!found || !found.id) throw new Error("Mod CurseForge não encontrado: " + slug);
+    if (!found) {
+      const wantedVersion = String(context.minecraftVersion || "").trim();
+      const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
+      const loaderType = loaderMap[String(context.modLoader || "")];
+      const terms = [...new Set([slug.replace(/[-_]+/g, " "), slug.replace(/[-_]+/g, "")])];
+      for (const term of terms) {
+        try {
+          const extra = await curseForgeApiGet("/mods/search", {
+            gameId: CURSEFORGE_GAME_ID, classId: 6, searchFilter: term,
+            gameVersion: wantedVersion || undefined, modLoaderType: loaderType || undefined,
+            pageSize: 50, index: 0
+          });
+          const hits = Array.isArray(extra) ? extra : [];
+          officialHits = officialHits.concat(hits);
+          found = hits.find(hit => String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase())
+            || hits.find(hit => normalizeProviderText(hit?.name) === normalizeProviderText(slug))
+            || null;
+          if (found) break;
+        } catch {}
+      }
+    }
+    if (!found || !found.id) {
+      const tried = curseForgePublicResolverState(context);
+      const fallbacks = [
+        ["modpacksch", () => resolveCurseForgeViaModpacksCh(rawUrl, context)],
+        ["mcim", () => resolveCurseForgeViaPublicProxy(rawUrl, context)],
+        ["modrinth", () => resolveCurseForgeViaModrinth(rawUrl, context)]
+      ];
+      for (const [name, resolver] of fallbacks) {
+        if (tried.has(name)) continue;
+        tried.add(name);
+        try {
+          const resolved = await resolver();
+          if (resolved && resolved !== rawUrl) return resolved;
+        } catch {}
+      }
+      throw new Error("Mod CurseForge não encontrado: " + slug);
+    }
 
     if (fileId) {
       const file = await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId);
@@ -1050,11 +1087,32 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       sortOrder: "desc"
     });
     const candidates = Array.isArray(files)
-      ? files.filter(f => isReleasedCurseForgeFile(f) && Array.isArray(f.gameVersions) && f.gameVersions.includes(String(context.minecraftVersion || "")))
+      ? files.filter(f =>
+          isReleasedCurseForgeFile(f) &&
+          Array.isArray(f.gameVersions) &&
+          f.gameVersions.includes(String(context.minecraftVersion || "")) &&
+          Number(f.modLoader || loaderType) === loaderType
+        )
       : [];
     const usable = candidates.filter(isReleasedCurseForgeFile);
     const selected = usable.find(f => Number(f.releaseType) === 1) || usable.find(f => Number(f.releaseType) === 2) || usable[0];
-    if (!selected) throw new Error("Nenhum arquivo de mod compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
+    if (!selected) {
+      const tried = curseForgePublicResolverState(context);
+      const fallbacks = [
+        ["modpacksch", () => resolveCurseForgeViaModpacksCh(rawUrl, context)],
+        ["mcim", () => resolveCurseForgeViaPublicProxy(rawUrl, context)],
+        ["modrinth", () => resolveCurseForgeViaModrinth(rawUrl, context)]
+      ];
+      for (const [name, resolver] of fallbacks) {
+        if (tried.has(name)) continue;
+        tried.add(name);
+        try {
+          const resolved = await resolver();
+          if (resolved && resolved !== rawUrl) return resolved;
+        } catch {}
+      }
+      throw new Error("Nenhum arquivo de mod compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
+    }
     context.expectedHashes = selected.hashes || null;
     context.expectedSize = Number(selected.fileLength || 0) || null;
     let selectedDownloadUrl = selected.downloadUrl || "";
