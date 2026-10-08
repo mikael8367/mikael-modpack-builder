@@ -71,7 +71,7 @@ function showAccountMessage(msg, ok=false){accountMessage.textContent=msg||"";ac
 function closeAllAccountModals(){accountModal.hidden=true;modpacksModal.hidden=true;}
 function openAccount(mode="login"){modpacksModal.hidden=true;accountMode=mode;document.getElementById("accountTitle").textContent=mode==="login"?"👤 Entrar":"📝 Criar conta";accountSubmit.textContent=mode==="login"?"Entrar":"Criar conta";document.getElementById("accountToggle").textContent=mode==="login"?"Criar conta":"Já tenho conta";accountModal.hidden=false;showAccountMessage("");document.getElementById("accountUsername").focus();}
 function updateAuthUI(){const status=document.getElementById("authStatus"), account=document.getElementById("accountBtn"), mine=document.getElementById("myModpacksBtn"), out=document.getElementById("logoutBtn");if(currentUser){status.textContent="👤 "+currentUser.username;account.textContent="👤 Conta";mine.hidden=false;out.hidden=false;}else{status.textContent="👤 Não conectado";account.textContent="👤 Criar conta / Entrar";mine.hidden=true;out.hidden=true;}}
-async function refreshMe(){try{const r=await fetch("/api/auth/me",{cache:"no-store"});const j=await r.json();currentUser=j.user||null;}catch{currentUser=null;}updateAuthUI();}
+async function refreshMe(){try{const r=await fetch("/api/auth/me",{cache:"no-store",credentials:"same-origin"});const j=await r.json().catch(()=>({}));currentUser=r.ok?(j.user||null):null;}catch{currentUser=null;}updateAuthUI();}
 document.getElementById("accountBtn").addEventListener("click",()=>currentUser?openMyModpacks():openAccount("login"));
 document.getElementById("closeAccount").addEventListener("click",()=>closeAllAccountModals());
 document.getElementById("accountToggle").addEventListener("click",()=>openAccount(accountMode==="login"?"register":"login"));
@@ -82,20 +82,20 @@ document.getElementById("accountSubmit").addEventListener("click",async()=>{
   accountSubmit.disabled=true;showAccountMessage("Processando...");
   try{
     const endpoint=accountMode==="login"?"/api/auth/login":"/api/auth/register";
-    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({username,password})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(j.error||"Não foi possível concluir.");
     currentUser=j.user;updateAuthUI();accountModal.hidden=true;document.getElementById("accountPassword").value="";setLog("✅ "+(accountMode==="login"?"Login realizado.":"Conta criada com sucesso."));
   }catch(e){showAccountMessage("❌ "+e.message);}
   finally{accountSubmit.disabled=false;}
 });
-document.getElementById("logoutBtn").addEventListener("click",async()=>{await fetch("/api/auth/logout",{method:"POST"}).catch(()=>{});currentUser=null;currentProjectId="";updateAuthUI();setLog("🚪 Você saiu da conta.");});
+document.getElementById("logoutBtn").addEventListener("click",async()=>{await fetch("/api/auth/logout",{method:"POST",credentials:"same-origin"}).catch(()=>{});currentUser=null;currentProjectId="";updateAuthUI();setLog("🚪 Você saiu da conta.");});
 async function openMyModpacks(){
   if(!currentUser){openAccount("login");return;}
   modpacksModal.hidden=false;
   const list=document.getElementById("modpackList");list.innerHTML='<div class="empty-modpacks">Carregando...</div>';
   try{
-    const r=await fetch("/api/my-modpacks",{cache:"no-store"}),j=await r.json();
+    const r=await fetch("/api/my-modpacks",{cache:"no-store",credentials:"same-origin"}),j=await r.json();
     if(!r.ok)throw new Error(j.error||"Falha ao carregar.");
     if(!j.projects.length){list.innerHTML='<div class="empty-modpacks">📦 Você ainda não salvou nenhum modpack.</div>';return;}
     list.innerHTML=j.projects.map(p=>'<div class="modpack-card"><b>'+esc(p.name)+'</b><div class="modpack-meta">Minecraft '+esc(p.minecraft)+' • '+esc(p.loader)+(p.loaderVersion?' '+esc(p.loaderVersion):'')+' • '+Number(p.links?.length||0)+' links</div><div class="modpack-actions"><button class="primary load-cloud-modpack" data-id="'+esc(p.id)+'" type="button">📂 Carregar</button><button class="secondary delete-cloud-modpack" data-id="'+esc(p.id)+'" type="button">🗑️ Excluir</button></div></div>').join("");
@@ -104,12 +104,12 @@ async function openMyModpacks(){
   }catch(e){list.innerHTML='<div class="empty-modpacks">❌ '+esc(e.message)+'</div>';}
 }
 async function loadCloudModpack(id){
-  try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id)),j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao carregar.");
+  try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id),{credentials:"same-origin"}),j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao carregar.");
     const p=j.project;document.getElementById("mc").value=p.minecraft||document.getElementById("mc").value;document.getElementById("loader").value=p.loader||"Forge";document.getElementById("loaderVersion").value=p.loaderVersion||"";
     linksEl.innerHTML="";(p.links||[]).forEach(addLink);if(!(p.links||[]).length)addLink();currentProjectId=p.id;modpacksModal.hidden=true;setLog("📂 Modpack \""+p.name+"\" carregado.");}
   catch(e){setLog("❌ "+e.message);}
 }
-async function deleteCloudModpack(id){if(!confirm("Excluir este modpack da sua conta?"))return;try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id),{method:"DELETE"});const j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao excluir.");openMyModpacks();setLog("🗑️ Modpack excluído.");}catch(e){setLog("❌ "+e.message);}}
+async function deleteCloudModpack(id){if(!confirm("Excluir este modpack da sua conta?"))return;try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id),{method:"DELETE",credentials:"same-origin"});const j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao excluir.");openMyModpacks();setLog("🗑️ Modpack excluído.");}catch(e){setLog("❌ "+e.message);}}
 document.getElementById("myModpacksBtn").addEventListener("click",openMyModpacks);
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeAllAccountModals();}});
 document.getElementById("closeModpacks").addEventListener("click",()=>closeAllAccountModals());
