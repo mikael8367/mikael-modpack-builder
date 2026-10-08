@@ -2120,7 +2120,15 @@ app.post("/api/build", async (req, res) => {
           if (!success) {
             const failure = { url: raw, name: filename || undefined, filename: filename || undefined, error: lastError && lastError.message ? lastError.message : "Falha no download." };
             failures.push(failure);
-            addJobLog(job, "error", "Download esgotou todas as tentativas", { index: i + 1, originalUrl: raw, filename: filename || "não identificado", attempts: MAX_DOWNLOAD_RETRIES, finalError: failure.error, code: lastError?.code || "", httpStatus: Number(lastError?.response?.status || lastError?.status || 0) || null });
+            addJobLog(job, "error", "Download encerrado", {
+              index: i + 1,
+              originalUrl: raw,
+              filename: filename || "não identificado",
+              attempts: lastError ? (isRetryableDownloadError(lastError) ? MAX_DOWNLOAD_RETRIES : 1) : 0,
+              finalError: failure.error,
+              code: lastError?.code || "",
+              httpStatus: Number(lastError?.response?.status || lastError?.status || 0) || null
+            });
           }
           completedLinks += 1;
           completed += 1;
