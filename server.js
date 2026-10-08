@@ -209,7 +209,7 @@ function parseCurseForgeFileId(parts) {
 function isReleasedCurseForgeFile(file) {
   return !!file &&
     file.isAvailable !== false &&
-    Number(file.fileStatus) === 10 &&
+    [4, 10].includes(Number(file.fileStatus)) &&
     file.isServerPack !== true;
 }
 
@@ -659,11 +659,16 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
   try {
     const search = await curseForgePublicProxyGet("/mods/search", {
       gameId: CURSEFORGE_GAME_ID,
-      slug,
-      pageSize: 1,
+      searchFilter: slug,
+      pageSize: 50,
       index: 0
     });
-    project = Array.isArray(search) ? search[0] : null;
+    const publicHits = Array.isArray(search) ? search : [];
+    project = publicHits.find(hit =>
+      String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase()
+    ) || publicHits.find(hit =>
+      String(hit?.name || "").toLowerCase().replace(/\s+/g, "-") === String(slug).toLowerCase()
+    ) || publicHits[0] || null;
   } catch {
     throw new Error("Proxy público do CurseForge não conseguiu localizar " + slug + ".");
   }
@@ -1002,8 +1007,18 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   const fileId = parseCurseForgeFileId(parts.slice(modIndex + 1));
 
   try {
-    const mod = await curseForgeApiGet("/mods/search", { gameId: CURSEFORGE_GAME_ID, slug, pageSize: 1 });
-    const found = Array.isArray(mod) ? mod[0] : null;
+    const mod = await curseForgeApiGet("/mods/search", {
+      gameId: CURSEFORGE_GAME_ID,
+      searchFilter: slug,
+      pageSize: 50,
+      index: 0
+    });
+    const officialHits = Array.isArray(mod) ? mod : [];
+    const found = officialHits.find(hit =>
+      String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase()
+    ) || officialHits.find(hit =>
+      String(hit?.name || "").toLowerCase().replace(/\s+/g, "-") === String(slug).toLowerCase()
+    ) || null;
     if (!found || !found.id) throw new Error("Mod CurseForge não encontrado: " + slug);
 
     if (fileId) {
@@ -1036,12 +1051,16 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       ? files.filter(f => isReleasedCurseForgeFile(f) && Array.isArray(f.gameVersions) && f.gameVersions.includes(String(context.minecraftVersion || "")))
       : [];
     const usable = candidates.filter(isReleasedCurseForgeFile);
-    const selected = usable.find(f => Number(f.releaseType) === 1) || usable[0];
+    const selected = usable.find(f => Number(f.releaseType) === 1) || usable.find(f => Number(f.releaseType) === 2) || usable[0];
     if (!selected) throw new Error("Nenhum arquivo de mod compatível de " + slug + " foi encontrado para Minecraft " + (context.minecraftVersion || "selecionado") + ".");
     context.expectedHashes = selected.hashes || null;
     context.expectedSize = Number(selected.fileLength || 0) || null;
-    if (!selected.downloadUrl) throw new Error("O arquivo de " + slug + " não possui URL de download disponível.");
-    return String(selected.downloadUrl);
+    let selectedDownloadUrl = selected.downloadUrl || "";
+    if (!selectedDownloadUrl) {
+      selectedDownloadUrl = await curseForgeApiGet("/mods/" + found.id + "/files/" + selected.id + "/download-url");
+    }
+    if (!selectedDownloadUrl) throw new Error("O arquivo de " + slug + " não possui URL de download disponível.");
+    return String(selectedDownloadUrl);
   } catch (err) {
     const status = Number(err?.response?.status || 0);
     if (status === 401 || status === 403) {
