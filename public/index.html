@@ -6,9 +6,19 @@
 <style>
 :root{color-scheme:dark;--bg:#080a0f;--card:#111621;--line:#273043;--text:#f5f7fb;--muted:#9aa6b8;--accent:#7c5cff;--good:#35d07f;--bad:#ff657a}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#17152a,#080a0f 55%);font-family:system-ui,Segoe UI,sans-serif;color:var(--text)}main{max-width:900px;margin:auto;padding:22px 14px 60px}.hero{padding:22px;border:1px solid var(--line);border-radius:24px;background:#0f131ddd;box-shadow:0 20px 70px #0008}h1{margin:0 0 7px;font-size:30px}.sub{color:var(--muted);line-height:1.5}.section{margin-top:18px;padding:16px;border:1px solid var(--line);border-radius:18px;background:#0b0f17}label{display:block;color:var(--muted);font-size:13px;margin-bottom:7px}select,input{width:100%;padding:13px;border-radius:11px;border:1px solid var(--line);background:#080b11;color:var(--text);outline:none}select:focus,input:focus{border-color:var(--accent)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.links{display:flex;flex-direction:column;gap:10px}.row{display:grid;grid-template-columns:1fr auto;gap:8px}.remove{background:#25141a;color:#ff8797;border:1px solid #49222d;border-radius:10px;padding:0 14px;font-weight:800}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:12px;padding:13px 17px;font-weight:800;cursor:pointer}.primary{background:var(--accent);color:#fff}.secondary{background:#1a2230;color:#fff;border:1px solid var(--line)}.file-button{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.file-info{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#080b11}.file-info b{color:#fff}.progress-box{margin-top:16px;padding:15px;border:1px solid var(--line);border-radius:14px;background:#080b11}.progress-track{height:14px;background:#1a2230;border-radius:99px;overflow:hidden;margin:10px 0}.progress-bar{height:100%;width:0;background:var(--accent);transition:width .25s}.progress-text{font-size:13px}.progress-file{font-size:12px;color:var(--muted);word-break:break-all}.upload-progress{margin-top:10px}.upload-list{max-height:180px;overflow:auto;margin-top:8px}.upload-item{padding:7px 0;border-bottom:1px solid #202735;font-size:12px}.upload-item:last-child{border-bottom:0}.mod-list{margin:8px 0 0;padding-left:20px;color:var(--muted);max-height:220px;overflow:auto}.mod-list li{margin:3px 0}button:disabled{opacity:.5;cursor:not-allowed}.hint{color:var(--muted);font-size:12px;margin-top:8px}.site-version{display:inline-block;margin-bottom:10px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#111621;color:#bfb4ff;font-size:11px;font-weight:800}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#1a1730;color:#bfb4ff;font-size:12px;margin-top:10px}.tool-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:12px 0}.stat{padding:11px;border:1px solid var(--line);border-radius:12px;background:#080b11}.stat b{display:block;font-size:20px}.validation-results{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:#080b11;max-height:300px;overflow:auto}.validation-item{padding:9px 11px;border-bottom:1px solid #202735;font-size:12px}.validation-item:last-child{border-bottom:0}.ok{color:var(--good)}.error{color:var(--bad)}.warn{color:#ffd166}.host{opacity:.75;margin-left:5px}.result-summary{margin-top:12px;padding:13px;border:1px solid var(--line);border-radius:12px;background:#080b11}.progress-meta{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted)}.mod-modal[hidden]{display:none!important}.mod-modal{position:fixed;inset:0;z-index:50;background:#000b;display:flex;align-items:center;justify-content:center;padding:14px}.mod-panel{width:min(920px,100%);max-height:92vh;overflow:auto;background:#0b0f17;border:1px solid var(--line);border-radius:22px;box-shadow:0 25px 100px #000c;padding:18px}.mod-tabs{display:flex;gap:8px;margin:12px 0}.mod-tab{flex:1}.mod-tab.active{background:var(--accent)}.mod-search{display:grid;grid-template-columns:1fr auto;gap:8px}.mod-results{display:flex;flex-direction:column;gap:10px;margin-top:14px}.mod-card{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:14px;background:#080b11}.mod-card img{width:52px;height:52px;border-radius:10px;object-fit:cover;background:#111621}.mod-card-title{font-weight:800}.mod-card-desc{color:var(--muted);font-size:12px;line-height:1.35;margin-top:3px}.mod-card-meta{color:var(--muted);font-size:11px;margin-top:5px}.mod-version-row{grid-column:2/-1;display:grid;grid-template-columns:1fr auto;gap:8px}.mod-version-row[hidden]{display:none!important}.mod-empty{padding:24px;text-align:center;color:var(--muted)}.mod-pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px}.mod-page-info{color:var(--muted);font-size:12px;text-align:center;flex:1}.build-log-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.build-log-entry{padding:8px 10px;border-bottom:1px solid #202735;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.build-log-entry:last-child{border-bottom:0}.build-log-entry.error{color:var(--bad)}.build-log-entry.success{color:var(--good)}.build-log-entry.warn{color:#ffd166}.build-log-details{color:var(--muted);margin-top:4px;overflow-wrap:anywhere}@media(max-width:650px){.mod-card{grid-template-columns:42px 1fr}.mod-card img{width:42px;height:42px}.mod-card>button{grid-column:1/-1}.mod-version-row{grid-column:1/-1}}
+
+.auth-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0}.auth-user{font-size:13px;color:var(--muted)}.auth-actions{display:flex;gap:8px;flex-wrap:wrap}.account-modal{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}.account-panel{width:min(440px,100%);background:#111722;border:1px solid #293246;border-radius:18px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.45)}.account-panel h2{margin-top:0}.account-panel input{width:100%;box-sizing:border-box;margin:7px 0 12px}.account-message{min-height:22px;margin:5px 0 10px}.modpack-list{display:grid;gap:10px;margin-top:12px}.modpack-card{background:#171e2b;border:1px solid #2b3548;border-radius:12px;padding:13px}.modpack-card b{display:block;font-size:16px}.modpack-meta{font-size:12px;color:var(--muted);margin:5px 0 10px}.modpack-actions{display:flex;gap:7px;flex-wrap:wrap}.empty-modpacks{text-align:center;color:var(--muted);padding:24px 8px}
 </style></head>
 <body><main><section class="hero">
-<div class="site-version">SITE v10.8</div><h1>⚙️ Mikael Modpack Builder</h1>
+<div class="site-version">SITE v10.9</div><div class="auth-bar">
+  <div class="auth-user" id="authStatus">👤 Não conectado</div>
+  <div class="auth-actions">
+    <button class="secondary" id="accountBtn" type="button">👤 Criar conta / Entrar</button>
+    <button class="secondary" id="myModpacksBtn" type="button" hidden>📦 Meus modpacks</button>
+    <button class="secondary" id="logoutBtn" type="button" hidden>🚪 Sair</button>
+  </div>
+</div>
+<h1>⚙️ Mikael Modpack Builder</h1>
 <div class="sub">Escolha o Minecraft e o modloader, cole os links dos mods e baixe tudo em <b>um único ZIP</b>.</div>
 <div class="badge">Até 999999 links • até 150 MB por arquivo • 5 GB por pacote</div>
 
@@ -31,7 +41,80 @@
 <div id="modsModal" class="mod-modal" hidden><div class="mod-panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><h2 style="margin:0">➕ Adicionar mods</h2><button class="secondary" id="closeMods" type="button">✕ Fechar</button></div><div class="hint">Escolha primeiro a versão do Minecraft e o modloader. Depois avance para ver somente mods compatíveis e instalar a versão desejada.</div><div id="modSetupStep"><h3 style="margin:16px 0 10px">1️⃣ Escolha a versão e o modloader</h3><div class="grid"><div><label>Versão do Minecraft para os mods</label><select id="modMinecraft"></select></div><div><label>Modloader para os mods</label><select id="modLoader"><option>Forge</option><option>Fabric</option><option>NeoForge</option><option>Quilt</option><option>LiteLoader</option><option>Outro</option></select></div></div><div class="actions"><button class="primary" id="nextModStep" type="button" style="width:100%;font-size:16px">Avançar ➜ Ver mods compatíveis</button></div></div><div id="modBrowserStep" hidden><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:14px"><h3 style="margin:0">2️⃣ Escolha e instale os mods</h3><button class="secondary" id="backModStep" type="button">← Voltar</button></div><div class="mod-tabs"><button class="secondary mod-tab active" data-source="modrinth" type="button">🟢 Modrinth</button><button class="secondary mod-tab" data-source="curseforge" type="button">🟠 CurseForge</button></div><div class="mod-search"><input id="modSearchInput" type="search" placeholder="Pesquisar um mod ou veja os mais populares..."><button class="primary" id="modSearchBtn" type="button">🔎 Pesquisar</button></div><div class="hint" id="modSearchContext"></div><div id="modResults" class="mod-results"></div><div class="mod-pagination"><button class="secondary" id="prevMods" type="button" disabled>⬅ Anterior</button><div class="mod-page-info" id="modPageInfo">Página 1</div><button class="primary" id="nextMods" type="button">Avançar ➜ Mais mods</button></div><div class="actions"><button class="secondary" id="testCurseForgeApi" type="button">🧪 Testar API CurseForge / fontes públicas</button><button class="secondary" id="refreshMods" type="button">🔄 Atualizar mods</button></div><div id="curseForgeStatus" class="hint" hidden></div></div></div></div><div class="actions"><button class="primary" id="build" type="button">⚙️ Gerar ZIP</button><button class="secondary" id="clear" type="button">🗑️ Limpar</button></div>
 <div id="buildStats" class="stats" hidden></div><div id="buildDownload" class="result-summary" hidden></div><div class="actions"><button class="secondary" id="showBuildLogs" type="button" hidden>📋 Ver logs</button></div><div id="buildLogs" class="result-summary" hidden><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b>📋 Logs detalhados da geração</b><div class="build-log-toolbar"><button class="secondary" id="copyBuildLogs" type="button">📋 Copiar logs completos</button><button class="secondary" id="closeBuildLogs" type="button">Fechar</button></div></div><div id="buildLogsSummary" class="hint" style="margin-top:8px"></div><div id="buildLogsContent" style="margin-top:10px;max-height:460px;overflow:auto"></div></div><div id="progressBox" class="progress-box" hidden><div class="progress-meta"><span id="progressCount">0/0</span><span id="progressSpeed">--</span></div><div class="progress-text" id="progressBreakdown" style="font-size:13px;margin-top:4px;opacity:.9"></div><div class="progress-text" id="progressText">Preparando...</div><div class="progress-track"><div id="progressBar" class="progress-bar"></div></div><div class="progress-file" id="progressFile"></div></div><div id="log">Adicione os links dos mods para começar.</div>
 </section></main>
+<div class="account-modal" id="accountModal" hidden>
+  <div class="account-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 id="accountTitle">👤 Entrar</h2><button class="secondary" id="closeAccount" type="button">✕</button></div>
+    <div id="accountMessage" class="account-message hint"></div>
+    <label>Nome de usuário</label><input id="accountUsername" maxlength="24" autocomplete="username" placeholder="Ex.: Mikael">
+    <label>Senha</label><input id="accountPassword" type="password" minlength="6" autocomplete="current-password" placeholder="Mínimo 6 caracteres">
+    <div class="actions"><button class="primary" id="accountSubmit" type="button">Entrar</button><button class="secondary" id="accountToggle" type="button">Criar conta</button></div>
+    <div class="hint">O nome precisa ser único. Use 3–24 caracteres: letras, números ou _.</div>
+  </div>
+</div>
+<div class="account-modal" id="modpacksModal" hidden>
+  <div class="account-panel" style="width:min(650px,100%)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2>📦 Meus modpacks</h2><button class="secondary" id="closeModpacks" type="button">✕</button></div>
+    <div class="hint">Aqui aparecem os projetos salvos na sua conta.</div>
+    <div id="modpackList" class="modpack-list"><div class="empty-modpacks">Carregando...</div></div>
+  </div>
+</div>
 <script>
+// ===== Conta e modpacks =====
+let currentUser = null;
+let currentProjectId = "";
+let accountMode = "login";
+const accountModal = document.getElementById("accountModal");
+const modpacksModal = document.getElementById("modpacksModal");
+const accountMessage = document.getElementById("accountMessage");
+const accountSubmit = document.getElementById("accountSubmit");
+function showAccountMessage(msg, ok=false){accountMessage.textContent=msg||"";accountMessage.className="account-message hint "+(ok?"ok":"");}
+function openAccount(mode="login"){accountMode=mode;document.getElementById("accountTitle").textContent=mode==="login"?"👤 Entrar":"📝 Criar conta";accountSubmit.textContent=mode==="login"?"Entrar":"Criar conta";document.getElementById("accountToggle").textContent=mode==="login"?"Criar conta":"Já tenho conta";accountModal.hidden=false;showAccountMessage("");document.getElementById("accountUsername").focus();}
+function updateAuthUI(){const status=document.getElementById("authStatus"), account=document.getElementById("accountBtn"), mine=document.getElementById("myModpacksBtn"), out=document.getElementById("logoutBtn");if(currentUser){status.textContent="👤 "+currentUser.username;account.textContent="👤 Conta";mine.hidden=false;out.hidden=false;}else{status.textContent="👤 Não conectado";account.textContent="👤 Criar conta / Entrar";mine.hidden=true;out.hidden=true;}}
+async function refreshMe(){try{const r=await fetch("/api/auth/me",{cache:"no-store"});const j=await r.json();currentUser=j.user||null;}catch{currentUser=null;}updateAuthUI();}
+document.getElementById("accountBtn").addEventListener("click",()=>openAccount(currentUser?"login":"login"));
+document.getElementById("closeAccount").addEventListener("click",()=>accountModal.hidden=true);
+document.getElementById("accountToggle").addEventListener("click",()=>openAccount(accountMode==="login"?"register":"login"));
+accountModal.addEventListener("click",e=>{if(e.target===accountModal)accountModal.hidden=true;});
+document.getElementById("accountSubmit").addEventListener("click",async()=>{
+  const username=document.getElementById("accountUsername").value.trim(), password=document.getElementById("accountPassword").value;
+  if(!username||!password){showAccountMessage("Preencha nome e senha.");return;}
+  accountSubmit.disabled=true;showAccountMessage("Processando...");
+  try{
+    const endpoint=accountMode==="login"?"/api/auth/login":"/api/auth/register";
+    const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||"Não foi possível concluir.");
+    currentUser=j.user;updateAuthUI();accountModal.hidden=true;document.getElementById("accountPassword").value="";setLog("✅ "+(accountMode==="login"?"Login realizado.":"Conta criada com sucesso."));
+  }catch(e){showAccountMessage("❌ "+e.message);}
+  finally{accountSubmit.disabled=false;}
+});
+document.getElementById("logoutBtn").addEventListener("click",async()=>{await fetch("/api/auth/logout",{method:"POST"}).catch(()=>{});currentUser=null;currentProjectId="";updateAuthUI();setLog("🚪 Você saiu da conta.");});
+async function openMyModpacks(){
+  if(!currentUser){openAccount("login");return;}
+  modpacksModal.hidden=false;
+  const list=document.getElementById("modpackList");list.innerHTML='<div class="empty-modpacks">Carregando...</div>';
+  try{
+    const r=await fetch("/api/my-modpacks",{cache:"no-store"}),j=await r.json();
+    if(!r.ok)throw new Error(j.error||"Falha ao carregar.");
+    if(!j.projects.length){list.innerHTML='<div class="empty-modpacks">📦 Você ainda não salvou nenhum modpack.</div>';return;}
+    list.innerHTML=j.projects.map(p=>'<div class="modpack-card"><b>'+esc(p.name)+'</b><div class="modpack-meta">Minecraft '+esc(p.minecraft)+' • '+esc(p.loader)+(p.loaderVersion?' '+esc(p.loaderVersion):'')+' • '+Number(p.links?.length||0)+' links</div><div class="modpack-actions"><button class="primary load-cloud-modpack" data-id="'+esc(p.id)+'" type="button">📂 Carregar</button><button class="secondary delete-cloud-modpack" data-id="'+esc(p.id)+'" type="button">🗑️ Excluir</button></div></div>').join("");
+    list.querySelectorAll(".load-cloud-modpack").forEach(b=>b.addEventListener("click",()=>loadCloudModpack(b.dataset.id)));
+    list.querySelectorAll(".delete-cloud-modpack").forEach(b=>b.addEventListener("click",()=>deleteCloudModpack(b.dataset.id)));
+  }catch(e){list.innerHTML='<div class="empty-modpacks">❌ '+esc(e.message)+'</div>';}
+}
+async function loadCloudModpack(id){
+  try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id)),j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao carregar.");
+    const p=j.project;document.getElementById("mc").value=p.minecraft||document.getElementById("mc").value;document.getElementById("loader").value=p.loader||"Forge";document.getElementById("loaderVersion").value=p.loaderVersion||"";
+    linksEl.innerHTML="";(p.links||[]).forEach(addLink);if(!(p.links||[]).length)addLink();currentProjectId=p.id;modpacksModal.hidden=true;setLog("📂 Modpack ""+p.name+"" carregado.");}
+  catch(e){setLog("❌ "+e.message);}
+}
+async function deleteCloudModpack(id){if(!confirm("Excluir este modpack da sua conta?"))return;try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id),{method:"DELETE"});const j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao excluir.");openMyModpacks();setLog("🗑️ Modpack excluído.");}catch(e){setLog("❌ "+e.message);}}
+document.getElementById("myModpacksBtn").addEventListener("click",openMyModpacks);
+document.getElementById("closeModpacks").addEventListener("click",()=>modpacksModal.hidden=true);
+modpacksModal.addEventListener("click",e=>{if(e.target===modpacksModal)modpacksModal.hidden=true;});
+refreshMe();
+// ===== Fim conta e modpacks =====
+
 const linksEl=document.getElementById('links');
 const log=document.getElementById('log');
 const txtFile=document.getElementById('txtFile');
@@ -402,9 +485,16 @@ document.getElementById('copyLinks').addEventListener('click',async()=>{
   const links=getLinks(); if(!links.length){setLog('Não há links para copiar.');return;}
   try{await navigator.clipboard.writeText(links.join('\n'));setLog('📋 '+links.length+' link(s) copiado(s).');}catch{setLog('❌ Não foi possível copiar os links.');}
 });
-document.getElementById('saveProject').addEventListener('click',()=>{
-  const data={version:1,minecraft:document.getElementById('mc').value,loader:document.getElementById('loader').value,loaderVersion:document.getElementById('loaderVersion').value,links:getLinks()};
-  localStorage.setItem('mikael-modpack-project',JSON.stringify(data));setLog('💾 Projeto salvo neste aparelho.');
+document.getElementById('saveProject').addEventListener('click',async()=>{
+  const data={version:1,minecraft:document.getElementById('mc').value,loader:document.getElementById('loader').value,loaderVersion:document.getElementById('loaderVersion').value,links:getLinks(),id:currentProjectId};
+  if(currentUser){
+    const name=prompt("Nome do modpack:", currentProjectId ? "" : "Meu Modpack");
+    if(name===null)return;
+    data.name=name.trim();if(!data.name){setLog("❌ Dê um nome ao modpack.");return;}
+    try{const r=await fetch("/api/my-modpacks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)}),j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao salvar.");currentProjectId=j.project.id;setLog("💾 Modpack salvo na sua conta: "+j.project.name);}catch(e){setLog("❌ "+e.message);}
+  }else{
+    localStorage.setItem('mikael-modpack-project',JSON.stringify(data));setLog('💾 Projeto salvo neste aparelho. Faça login para salvar na sua conta.');
+  }
 });
 document.getElementById('loadProject').addEventListener('click',()=>{
   try{const data=JSON.parse(localStorage.getItem('mikael-modpack-project')||'null');if(!data)throw new Error('Nenhum projeto salvo.');
