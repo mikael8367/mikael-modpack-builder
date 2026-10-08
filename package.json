@@ -1,6 +1,6 @@
 {
   "name": "minecraft-1122-modpack-builder",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "scripts": {
     "start": "node -r ./curseforge-hardening.js server.js"
