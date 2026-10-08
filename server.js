@@ -2433,6 +2433,7 @@ app.post("/api/build", async (req, res) => {
       // SHA-256 real do conteúdo e auditoria final antes do ZIP.
       const downloadedHashes = new Set();
       const seenArtifactKeys = new Set();
+      let duplicatesRemoved = 0;
       let localProcessed = 0;
       try {
         if (localUpload) {
@@ -2445,6 +2446,7 @@ app.post("/api/build", async (req, res) => {
             const contentHash = await fileSha256(target);
             if (downloadedHashes.has(contentHash)) {
               await fsp.rm(target, { force: true }).catch(() => {});
+              duplicatesRemoved += 1;
               addJobLog(job, "warn", "Arquivo local duplicado ignorado", { localFilename: f.filename, bytes: st.size, sha256: contentHash });
               localProcessed += 1;
               updateJob(job, {
@@ -2496,6 +2498,23 @@ app.post("/api/build", async (req, res) => {
               const resolvedArtifactKey = String(context.artifactKey || "") || curseForgeCdnArtifactKey(url) || (strongPublishedHash(context.expectedHashes) ? "sha:" + strongPublishedHash(context.expectedHashes) : "");
               if (resolvedArtifactKey && seenArtifactKeys.has(resolvedArtifactKey)) {
                 if (response?.data) response.data.destroy();
+                duplicatesRemoved += 1;
+                if (Array.isArray(context.dependencyUrls) && context.dependencyUrls.length) {
+                  let dependenciesAdded = 0;
+                  for (const dependencyUrl of context.dependencyUrls) {
+                    const key = normalizeDuplicateUrl(dependencyUrl);
+                    if (key && !seenLinkKeys.has(key)) {
+                      uniqueLinks.push(dependencyUrl);
+                      seenLinkKeys.add(key);
+                      dependenciesAdded += 1;
+                    }
+                  }
+                  if (dependenciesAdded > 0) {
+                    job.progress.dependencyLinksTotal = Number(job.progress.dependencyLinksTotal || 0) + dependenciesAdded;
+                    job.progress.total = uniqueLinks.length + localCount;
+                    addJobLog(job, "info", "Dependências obrigatórias adicionadas", { index: i + 1, originalUrl: raw, dependenciesAdded });
+                  }
+                }
                 addJobLog(job, "warn", "Artefato duplicado ignorado antes do download", {
                   index: i + 1,
                   originalUrl: raw,
@@ -2573,6 +2592,7 @@ app.post("/api/build", async (req, res) => {
               if (downloadedHashes.has(contentHash)) {
                 await fsp.rm(target, { force: true }).catch(() => {});
                 total = Math.max(0, total - bytes);
+                duplicatesRemoved += 1;
                 addJobLog(job, "warn", "Mod duplicado ignorado por SHA-256", {
                   index: i + 1,
                   originalUrl: raw,
@@ -2709,6 +2729,7 @@ app.post("/api/build", async (req, res) => {
           const hash = String(file.contentHash || await fileSha256(file.target)).toLowerCase();
           if (auditedHashes.has(hash)) {
             await fsp.rm(file.target, { force: true }).catch(() => {});
+            duplicatesRemoved += 1;
             total = Math.max(0, total - Number(file.size || 0));
             addJobLog(job, "warn", "Auditoria final removeu duplicata", {
               filename: file.filename,
@@ -2725,7 +2746,8 @@ app.post("/api/build", async (req, res) => {
         files = auditedFiles;
         addJobLog(job, "success", "Auditoria final de duplicação concluída", {
           uniqueFiles: files.length,
-          duplicateFilesRemoved: Math.max(0, beforeAuditCount - files.length)
+          duplicateFilesRemoved: duplicatesRemoved,
+          auditOnlyDuplicatesRemoved: Math.max(0, beforeAuditCount - files.length)
         });
         if (!files.length) throw new Error("A auditoria final não encontrou nenhum arquivo único.");
 
@@ -2786,6 +2808,7 @@ app.post("/api/build", async (req, res) => {
           originalLinksTotal: Number(job.progress.originalLinksTotal || uniqueLinks.length),
           dependencyLinksTotal: Number(job.progress.dependencyLinksTotal || 0),
           downloadedFiles: files.length,
+          duplicateFilesRemoved: duplicatesRemoved,
           failedLinks: failures.length,
           message: failures.length ? `⚠️ ZIP pronto: ${files.length} baixados, ${failures.length} com erro.` : "✅ Todos os mods foram instalados e o ZIP está pronto!",
           failures
