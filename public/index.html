@@ -71,7 +71,7 @@ function showAccountMessage(msg, ok=false){accountMessage.textContent=msg||"";ac
 function openAccount(mode="login"){accountMode=mode;document.getElementById("accountTitle").textContent=mode==="login"?"👤 Entrar":"📝 Criar conta";accountSubmit.textContent=mode==="login"?"Entrar":"Criar conta";document.getElementById("accountToggle").textContent=mode==="login"?"Criar conta":"Já tenho conta";accountModal.hidden=false;showAccountMessage("");document.getElementById("accountUsername").focus();}
 function updateAuthUI(){const status=document.getElementById("authStatus"), account=document.getElementById("accountBtn"), mine=document.getElementById("myModpacksBtn"), out=document.getElementById("logoutBtn");if(currentUser){status.textContent="👤 "+currentUser.username;account.textContent="👤 Conta";mine.hidden=false;out.hidden=false;}else{status.textContent="👤 Não conectado";account.textContent="👤 Criar conta / Entrar";mine.hidden=true;out.hidden=true;}}
 async function refreshMe(){try{const r=await fetch("/api/auth/me",{cache:"no-store"});const j=await r.json();currentUser=j.user||null;}catch{currentUser=null;}updateAuthUI();}
-document.getElementById("accountBtn").addEventListener("click",()=>openAccount(currentUser?"login":"login"));
+document.getElementById("accountBtn").addEventListener("click",()=>currentUser?openMyModpacks():openAccount("login"));
 document.getElementById("closeAccount").addEventListener("click",()=>accountModal.hidden=true);
 document.getElementById("accountToggle").addEventListener("click",()=>openAccount(accountMode==="login"?"register":"login"));
 accountModal.addEventListener("click",e=>{if(e.target===accountModal)accountModal.hidden=true;});
