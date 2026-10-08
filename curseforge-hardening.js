@@ -53,7 +53,11 @@ const SEARCH_ALIASES = {
   "projecte-teams": ["projecteteams", "projecte teams"],
   "dynamictrees-biomes-o-plenty": ["dtbop", "dynamic trees biomes o plenty"],
   "the-aether-ii": ["aether-ii", "aether ii"],
-  "traverse-legacy": ["traverse-reforged", "traverse"]
+  "traverse-legacy": ["traverse-reforged", "traverse"],
+  "forge-multipart-cbe": ["cb-multipart", "forge multipart cbe"],
+  "wild-nature": ["wildnature", "wild nature"],
+  "betterfps": ["better fps"],
+  "phosphor-forge": ["phosphor", "phosphor forge"]
 };
 
 function bestProjectHit(hits, wanted) {
