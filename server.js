@@ -206,6 +206,21 @@ function parseCurseForgeFileId(parts) {
   return /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
+function scoreCurseForgeCandidate(hit, slug) {
+  const wanted = normalizeProviderText(slug);
+  const hitSlug = normalizeProviderText(hit?.slug);
+  const hitName = normalizeProviderText(hit?.name);
+  let score = 0;
+  if (hitSlug === wanted) score += 10000;
+  if (hitName === wanted) score += 9000;
+  if (hitSlug.replace(/-/g, "") === wanted.replace(/-/g, "")) score += 8000;
+  if (hitName.replace(/-/g, "") === wanted.replace(/-/g, "")) score += 7500;
+  if (hitSlug.includes(wanted) || wanted.includes(hitSlug)) score += 3000;
+  if (hitName.includes(wanted) || wanted.includes(hitName)) score += 2500;
+  score += Math.min(500, Math.log10(Math.max(1, Number(hit?.downloadCount || 0))) * 50);
+  return score;
+}
+
 function isReleasedCurseForgeFile(file) {
   return !!file &&
     file.isAvailable !== false &&
@@ -700,11 +715,10 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
       index: 0
     });
     const publicHits = Array.isArray(search) ? search : [];
-    project = publicHits.find(hit =>
-      String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase()
-    ) || publicHits.find(hit =>
-      String(hit?.name || "").toLowerCase().replace(/\s+/g, "-") === String(slug).toLowerCase()
-    ) || publicHits[0] || null;
+    const rankedPublic = publicHits
+      .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
+      .sort((a, b) => b.score - a.score);
+    project = rankedPublic[0]?.score >= 2500 ? rankedPublic[0].hit : null;
   } catch {
     throw new Error("Proxy público do CurseForge não conseguiu localizar " + slug + ".");
   }
@@ -1051,11 +1065,10 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       index: 0
     });
     let officialHits = Array.isArray(mod) ? mod : [];
-    let found = officialHits.find(hit =>
-      String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase()
-    ) || officialHits.find(hit =>
-      String(hit?.name || "").toLowerCase().replace(/\s+/g, "-") === String(slug).toLowerCase()
-    ) || null;
+    let found = officialHits
+      .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
+      .sort((a, b) => b.score - a.score)[0]?.hit || null;
+    if (found && scoreCurseForgeCandidate(found, slug) < 2500) found = null;
     if (!found) {
       const wantedVersion = String(context.minecraftVersion || "").trim();
       const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
@@ -1070,9 +1083,10 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
           });
           const hits = Array.isArray(extra) ? extra : [];
           officialHits = officialHits.concat(hits);
-          found = hits.find(hit => String(hit?.slug || "").toLowerCase() === String(slug).toLowerCase())
-            || hits.find(hit => normalizeProviderText(hit?.name) === normalizeProviderText(slug))
-            || null;
+          const ranked = hits
+            .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
+            .sort((a, b) => b.score - a.score);
+          found = ranked[0]?.score >= 2500 ? ranked[0].hit : null;
           if (found) break;
         } catch {}
       }
