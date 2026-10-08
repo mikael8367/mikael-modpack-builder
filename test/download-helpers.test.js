@@ -24,6 +24,10 @@ const {
   isClientCompatibleEnvironment,
   isKnownModrinthLoader,
   redactUrl,
+  normalizeDuplicateUrl,
+  curseForgeCdnArtifactKey,
+  strongPublishedHash,
+  fileSha256,
   verifyFileIntegrity
 } = require("../server.js");
 
@@ -346,6 +350,41 @@ test("full local build pipeline creates a downloadable ZIP", async () => {
     uploads.delete(uploadId);
     await fs.rm(uploadDir, { recursive: true, force: true }).catch(() => {});
     await new Promise(resolve => server.close(resolve));
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("strict URL dedupe canonicalizes equivalent URLs", () => {
+  assert.equal(
+    normalizeDuplicateUrl("HTTPS://Example.COM:443/mod.jar?b=2&a=1#fragment"),
+    normalizeDuplicateUrl("https://example.com/mod.jar?a=1&b=2")
+  );
+  assert.notEqual(
+    normalizeDuplicateUrl("https://example.com/mod.jar?token=A"),
+    normalizeDuplicateUrl("https://example.com/mod.jar?token=B")
+  );
+});
+
+test("CurseForge CDN artifact IDs are stable across CDN mirrors", () => {
+  assert.equal(curseForgeCdnArtifactKey("https://edge.forgecdn.net/files/2782/568/SomeMod.jar"), "curseforge:file:2782568");
+  assert.equal(curseForgeCdnArtifactKey("https://mediafilez.forgecdn.net/files/2782/568/SomeMod.jar"), "curseforge:file:2782568");
+});
+
+test("published hashes choose the strongest available identity", () => {
+  assert.equal(strongPublishedHash({ md5: "AA", sha1: "BB", sha512: "CC" }), "cc");
+  assert.equal(strongPublishedHash([{ algo: 1, value: "DD" }, { algo: 2, value: "EE" }]), "dd");
+});
+
+test("SHA-256 detects byte-identical files even with different filenames", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mikael-dedupe-hash-"));
+  try {
+    const first = path.join(dir, "first.jar");
+    const second = path.join(dir, "second.jar");
+    await fs.writeFile(first, Buffer.from("same mod bytes"));
+    await fs.writeFile(second, Buffer.from("same mod bytes"));
+    assert.equal(await fileSha256(first), await fileSha256(second));
+  } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
