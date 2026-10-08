@@ -47,6 +47,29 @@ const CURSEFORGE_PUBLIC_PROXY_BASES = [...new Set(
 )];
 const CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS = 900;
 const CURSEFORGE_GAME_ID = 432;
+const CURSEFORGE_SEARCH_ALIASES = Object.freeze({
+  "foamfix-for-minecraft": ["foamfix-optimization-mod", "foamfix"],
+  "projecte-teams": ["projecteteams", "projecte teams"],
+  "dynamictrees-biomes-o-plenty": ["dtbop", "dynamic trees biomes o plenty"],
+  "the-aether-ii": ["aether-ii", "aether ii"],
+  "traverse-legacy": ["traverse-reforged", "traverse"],
+  "forge-multipart-cbe": ["cb-multipart", "forge multipart cbe"],
+  "wild-nature": ["wildnature", "wild nature"],
+  "betterfps": ["better fps"],
+  "phosphor-forge": ["phosphor", "phosphor forge"]
+});
+
+function curseForgeSearchTerms(slug) {
+  const raw = String(slug || "").trim().toLowerCase();
+  const aliases = CURSEFORGE_SEARCH_ALIASES[raw] || [];
+  return [...new Set([
+    raw,
+    raw.replace(/[-_]+/g, " "),
+    raw.replace(/[-_]+/g, ""),
+    ...aliases
+  ].filter(Boolean))];
+}
+
 const CURSEFORGE_PROJECT_ID_FALLBACKS = Object.freeze({
   "foamfix-for-minecraft": 278494,
   "foamfix-optimization-mod": 278494,
@@ -262,14 +285,14 @@ async function resolveCurseForgeRequiredDependencies(file, context = {}) {
   const urls = [];
   for (const dep of required.slice(0, 50)) {
     try {
-      const depFiles = await curseForgeApiGet("/mods/" + Number(dep.modId) + "/files", {
+      let depFiles = await curseForgeApiGet("/mods/" + Number(dep.modId) + "/files", {
         gameVersion: wantedVersion,
         modLoaderType: loaderType,
         pageSize: 50,
         sortField: 11,
         sortOrder: "desc"
       });
-      const candidates = Array.isArray(depFiles)
+      let candidates = Array.isArray(depFiles)
         ? depFiles.filter(f =>
             isReleasedCurseForgeFile(f) &&
             Array.isArray(f.gameVersions) &&
@@ -277,6 +300,21 @@ async function resolveCurseForgeRequiredDependencies(file, context = {}) {
             (!f.modLoader || Number(f.modLoader) === 0 || Number(f.modLoader) === loaderType)
           )
         : [];
+      if (!candidates.length) {
+        const legacy = await curseForgeApiGet("/mods/" + Number(dep.modId) + "/files", {
+          gameVersion: wantedVersion,
+          pageSize: 50,
+          sortField: 11,
+          sortOrder: "desc"
+        }).catch(() => []);
+        depFiles = Array.isArray(legacy) ? legacy : [];
+        candidates = depFiles.filter(f =>
+          isReleasedCurseForgeFile(f) &&
+          Array.isArray(f.gameVersions) &&
+          f.gameVersions.includes(wantedVersion) &&
+          (!f.modLoader || Number(f.modLoader) === 0 || Number(f.modLoader) === loaderType)
+        );
+      }
       const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates.find(f => Number(f.releaseType) === 2) || candidates[0];
       if (!selected) continue;
       let url = selected.downloadUrl || "";
@@ -630,7 +668,7 @@ function normalizeProviderText(value) {
   return String(value || "")
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
@@ -644,7 +682,7 @@ function scoreModrinthCandidate(hit, slug) {
   if (title === wanted) score += 900;
   if (hitSlug.includes(wanted) || wanted.includes(hitSlug)) score += 500;
   if (title.includes(wanted) || wanted.includes(title)) score += 450;
-  const wantedTokens = wanted.split(/\\s+/).filter(Boolean);
+  const wantedTokens = wanted.split(/\s+/).filter(Boolean);
   const combined = hitSlug + " " + title;
   score += wantedTokens.filter(t => t.length >= 3 && combined.includes(t)).length * 70;
   score += Number(hit?.downloads || 0) > 0 ? Math.min(40, Math.floor(Math.log10(Number(hit.downloads || 1) + 1) * 5)) : 0;
@@ -658,7 +696,7 @@ function extractGithubRepoFromUrl(rawUrl) {
     const parts = u.pathname.split("/").filter(Boolean);
     if (parts.length < 2) return null;
     const owner = parts[0].trim();
-    const repo = parts[1].replace(/\\.git$/i, "").trim();
+    const repo = parts[1].replace(/\.git$/i, "").trim();
     if (!owner || !repo || !/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return null;
     return { owner, repo };
   } catch {
@@ -669,8 +707,8 @@ function extractGithubRepoFromUrl(rawUrl) {
 function githubAssetCompatible(asset, release, minecraftVersion, modLoader, projectLoaders = []) {
   const name = normalizeProviderText(asset?.name);
   const releaseText = normalizeProviderText((release?.name || "") + " " + (release?.tag_name || ""));
-  const mc = normalizeProviderText(minecraftVersion).replace(/\\s+/g, "");
-  if (!/\\.(jar|litemod|zip)$/i.test(String(asset?.name || ""))) return false;
+  const mc = normalizeProviderText(minecraftVersion).replace(/\s+/g, "");
+  if (!/\.(jar|litemod|zip)$/i.test(String(asset?.name || ""))) return false;
   if (!mc || (!name.includes(mc) && !releaseText.includes(mc))) return false;
   const loader = normalizeProviderText(modLoader);
   if (loader && loader !== "outro") {
@@ -730,21 +768,43 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
   const fileId = parseCurseForgeFileId(parts.slice(modIndex + 1));
 
   let project = null;
-  try {
-    const search = await curseForgePublicProxyGet("/mods/search", {
-      gameId: CURSEFORGE_GAME_ID,
-      classId: 6,
-      searchFilter: slug,
-      pageSize: 50,
-      index: 0
-    });
-    const publicHits = Array.isArray(search) ? search : [];
-    const rankedPublic = publicHits
-      .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
-      .sort((a, b) => b.score - a.score);
-    project = rankedPublic[0]?.score >= 2500 ? rankedPublic[0].hit : null;
-  } catch {
-    throw new Error("Proxy público do CurseForge não conseguiu localizar " + slug + ".");
+  const fallbackProjectId = CURSEFORGE_PROJECT_ID_FALLBACKS[String(slug).toLowerCase()];
+  if (fallbackProjectId) {
+    try {
+      const direct = await curseForgePublicProxyGet("/mods/" + fallbackProjectId, {});
+      if (direct?.id && Number(direct.classId || 6) === 6) project = direct;
+    } catch {}
+  }
+  if (!project) {
+    const terms = curseForgeSearchTerms(slug);
+    const allHits = [];
+    for (const term of terms) {
+      try {
+        const search = await curseForgePublicProxyGet("/mods/search", {
+          gameId: CURSEFORGE_GAME_ID,
+          classId: 6,
+          searchFilter: term,
+          pageSize: 50,
+          index: 0
+        });
+        const hits = Array.isArray(search) ? search : [];
+        allHits.push(...hits);
+        const ranked = hits
+          .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
+          .sort((a, b) => b.score - a.score);
+        const best = ranked[0];
+        if (best?.score >= 2500 && Number(best.hit?.classId || 6) === 6) {
+          project = best.hit;
+          break;
+        }
+      } catch {}
+    }
+    if (!project && allHits.length) {
+      const ranked = allHits
+        .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
+        .sort((a, b) => b.score - a.score);
+      project = ranked.find(x => x.score >= 2500 && Number(x.hit?.classId || 6) === 6)?.hit || null;
+    }
   }
 
   if (!project?.id) throw new Error("Mod CurseForge não encontrado no proxy público: " + slug + ".");
@@ -782,7 +842,7 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
     sortOrder: "desc"
   });
 
-  const candidates = Array.isArray(files)
+  let candidates = Array.isArray(files)
     ? files.filter(f =>
         isReleasedCurseForgeFile(f) &&
         Array.isArray(f.gameVersions) &&
@@ -791,7 +851,22 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
       )
     : [];
 
-  const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates[0];
+  if (!candidates.length) {
+    const legacyFiles = await curseForgePublicProxyGet("/mods/" + project.id + "/files", {
+      gameVersion: wantedVersion,
+      pageSize: 50,
+      sortField: 11,
+      sortOrder: "desc"
+    }).catch(() => []);
+    candidates = (Array.isArray(legacyFiles) ? legacyFiles : []).filter(f =>
+      isReleasedCurseForgeFile(f) &&
+      Array.isArray(f.gameVersions) &&
+      f.gameVersions.includes(wantedVersion) &&
+      (!f.modLoader || Number(f.modLoader) === 0 || Number(f.modLoader) === loaderType)
+    );
+  }
+
+  const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates.find(f => Number(f.releaseType) === 2) || candidates[0];
   if (!selected) {
     throw new Error("Nenhum arquivo compatível de " + slug + " foi encontrado no proxy público.");
   }
@@ -1082,47 +1157,62 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
   const fileId = parseCurseForgeFileId(parts.slice(modIndex + 1));
 
   try {
-    const mod = await curseForgeApiGet("/mods/search", {
-      gameId: CURSEFORGE_GAME_ID,
-      searchFilter: slug,
-      pageSize: 50,
-      index: 0
-    });
-    let officialHits = Array.isArray(mod) ? mod : [];
-    let found = officialHits
-      .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
-      .sort((a, b) => b.score - a.score)[0]?.hit || null;
-    if (found && scoreCurseForgeCandidate(found, slug) < 2500) found = null;
+    const wantedVersion = String(context.minecraftVersion || "").trim();
+    const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
+    const loaderType = loaderMap[String(context.modLoader || "")];
+    let officialHits = [];
+    let found = null;
 
-    // Alguns projetos antigos do Minecraft 1.12.2 têm busca por slug instável
-    // mesmo existindo na API. Use o ID oficial conhecido como fallback determinístico.
+    // A API documenta slug + classId como lookup único. Faça esse caminho primeiro.
+    try {
+      const exactResponse = await curseForgeApiGet("/mods/search", {
+        gameId: CURSEFORGE_GAME_ID,
+        classId: 6,
+        slug,
+        pageSize: 50,
+        index: 0
+      });
+      const exactHits = Array.isArray(exactResponse) ? exactResponse : [];
+      officialHits.push(...exactHits);
+      found = exactHits.find(hit =>
+        Number(hit?.classId || 6) === 6 &&
+        normalizeProviderText(hit?.slug) === normalizeProviderText(slug)
+      ) || null;
+    } catch {}
+
+    // Alguns projetos antigos têm busca por slug instável. Use o ID oficial conhecido.
     const fallbackProjectId = CURSEFORGE_PROJECT_ID_FALLBACKS[String(slug).toLowerCase()];
-    if (fallbackProjectId) {
+    if (!found && fallbackProjectId) {
       try {
         const fallbackProject = await curseForgeApiGet("/mods/" + fallbackProjectId);
-        if (fallbackProject?.id) found = fallbackProject;
+        if (fallbackProject?.id && Number(fallbackProject.classId || 6) === 6) found = fallbackProject;
       } catch {}
     }
 
+    // Último caminho: pesquisa textual com aliases/normalizações.
     if (!found) {
-      const wantedVersion = String(context.minecraftVersion || "").trim();
-      const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
-      const loaderType = loaderMap[String(context.modLoader || "")];
-      const terms = [...new Set([slug.replace(/[-_]+/g, " "), slug.replace(/[-_]+/g, "")])];
-      for (const term of terms) {
+      for (const term of curseForgeSearchTerms(slug)) {
         try {
           const extra = await curseForgeApiGet("/mods/search", {
-            gameId: CURSEFORGE_GAME_ID, classId: 6, searchFilter: term,
-            gameVersion: wantedVersion || undefined, modLoaderType: loaderType || undefined,
-            pageSize: 50, index: 0
+            gameId: CURSEFORGE_GAME_ID,
+            classId: 6,
+            searchFilter: term,
+            gameVersion: wantedVersion || undefined,
+            modLoaderType: loaderType || undefined,
+            pageSize: 50,
+            index: 0
           });
           const hits = Array.isArray(extra) ? extra : [];
-          officialHits = officialHits.concat(hits);
+          officialHits.push(...hits);
           const ranked = hits
             .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
+            .filter(x => Number(x.hit?.classId || 6) === 6)
             .sort((a, b) => b.score - a.score);
-          found = ranked[0]?.score >= 2500 ? ranked[0].hit : null;
-          if (found) break;
+          const best = ranked[0];
+          if (best?.score >= 2500) {
+            found = best.hit;
+            break;
+          }
         } catch {}
       }
     }
@@ -1556,7 +1646,54 @@ async function requestFile(rawUrl, context = {}) {
     }
     return { response, url: checked.url };
   }
-  throw new Error("Muitos redirecionamentos.");
+
+  const attempted = context._curseForgeCdnAlternatesTried instanceof Set
+    ? context._curseForgeCdnAlternatesTried
+    : (context._curseForgeCdnAlternatesTried = new Set());
+
+  const tryUrl = async candidate => {
+    const value = String(candidate || "").trim();
+    if (!/^https?:\/\//i.test(value) || attempted.has(value)) return null;
+    attempted.add(value);
+    try {
+      return await requestFile(value, context);
+    } catch {}
+    return null;
+  };
+
+  try {
+    const alt = new URL(String(current));
+    const host = alt.hostname.toLowerCase();
+    if (host === "edge.forgecdn.net") alt.hostname = "mediafilez.forgecdn.net";
+    else if (host === "mediafilez.forgecdn.net") alt.hostname = "edge.forgecdn.net";
+    else if (host.endsWith(".forgecdn.net")) alt.hostname = "mediafilez.forgecdn.net";
+    const switched = await tryUrl(alt.toString());
+    if (switched) return switched;
+  } catch {}
+
+  for (const alternative of Array.isArray(context.publicAlternativeUrls) ? context.publicAlternativeUrls : []) {
+    const switched = await tryUrl(alternative);
+    if (switched) return switched;
+  }
+
+  const providers = [
+    ["modpacksch", () => resolveCurseForgeViaModpacksCh(rawUrl, context)],
+    ["mcim", () => resolveCurseForgeViaPublicProxy(rawUrl, context)],
+    ["modrinth", () => resolveCurseForgeViaModrinth(rawUrl, context)]
+  ];
+  const tried = curseForgePublicResolverState(context);
+  for (const [name, resolver] of providers) {
+    if (tried.has(name)) continue;
+    tried.add(name);
+    try {
+      const fallbackUrl = await resolver();
+      if (!fallbackUrl) continue;
+      const switched = await tryUrl(fallbackUrl);
+      if (switched) return switched;
+    } catch {}
+  }
+
+  throw new Error("Muitos redirecionamentos no download do CurseForge. Foram tentadas URLs CDN alternativas e fontes públicas.");
 }
 
 function safeFileName(name, index) {
