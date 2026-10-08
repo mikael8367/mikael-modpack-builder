@@ -946,15 +946,21 @@ async function resolveCurseForgeViaModpacksCh(rawUrl, context = {}) {
     ? "/public/mod/search/" + encodeURIComponent(wantedVersion) + "/" + encodeURIComponent(loader) + "/50"
     : "/public/mod/search/50";
 
-  const search = await publicProviderGet(
-    MODPACKS_CH_API_BASE,
-    searchPath,
-    { term: slug },
-    "modpacksch:curseforge-search:" + slug + ":" + wantedVersion + ":" + loader,
-    "Modpacks.ch"
-  );
-
-  const mods = Array.isArray(search?.mods) ? search.mods : [];
+  let mods = [];
+  for (const term of curseForgeSearchTerms(slug)) {
+    try {
+      const search = await publicProviderGet(
+        MODPACKS_CH_API_BASE,
+        searchPath,
+        { term },
+        "modpacksch:curseforge-search:" + term + ":" + wantedVersion + ":" + loader,
+        "Modpacks.ch"
+      );
+      const foundMods = Array.isArray(search?.mods) ? search.mods : [];
+      mods.push(...foundMods);
+      if (foundMods.some(m => normalizeProviderText(m?.curseSlug || m?.slug) === normalizeProviderText(slug))) break;
+    } catch {}
+  }
   const curseMods = mods.filter(m => String(m?.provider || "").toLowerCase() === "curseforge");
   const ranked = (curseMods.length ? curseMods : mods)
     .map(hit => ({ hit, score: scoreModpacksChCurseForgeCandidate(hit, slug) }))
@@ -1033,24 +1039,30 @@ async function resolveCurseForgeViaModrinth(rawUrl, context = {}) {
   }
 
   if (!project) {
-    const searchText = slug.replace(/[-_]+/g, " ");
-    const search = await modrinthApiGet(
-      "https://api.modrinth.com/v2/search",
-      {
-        params: {
-          query: searchText,
-          facets: JSON.stringify([["project_type:mod"], ["versions:" + wantedVersion], ["categories:" + wantedLoader]]),
-          index: "downloads",
-          offset: 0,
-          limit: 20
-        },
-        timeout: 20000,
-        headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" }
-      },
-      "cf-fallback-search:" + slug + ":" + wantedVersion + ":" + wantedLoader
-    );
-    const hits = Array.isArray(search?.hits) ? search.hits : [];
-    const scored = hits.map(hit => ({ hit, score: scoreModrinthCandidate(hit, slug) })).sort((a,b) => b.score - a.score);
+    const allHits = [];
+    for (const term of curseForgeSearchTerms(slug)) {
+      try {
+        const search = await modrinthApiGet(
+          "https://api.modrinth.com/v2/search",
+          {
+            params: {
+              query: term.replace(/[-_]+/g, " "),
+              facets: JSON.stringify([["project_type:mod"], ["versions:" + wantedVersion], ["categories:" + wantedLoader]]),
+              index: "downloads",
+              offset: 0,
+              limit: 20
+            },
+            timeout: 20000,
+            headers: { Accept: "application/json", "User-Agent": "Mikael-Modpack-Builder/9.0 (https://github.com/mikael8367/mikael-modpack-builder)" }
+          },
+          "cf-fallback-search:" + term + ":" + wantedVersion + ":" + wantedLoader
+        );
+        allHits.push(...(Array.isArray(search?.hits) ? search.hits : []));
+      } catch {}
+    }
+    const scored = allHits
+      .map(hit => ({ hit, score: scoreModrinthCandidate(hit, slug) }))
+      .sort((a,b) => b.score - a.score);
     project = scored[0]?.hit || null;
   }
 
@@ -1550,6 +1562,24 @@ function rewriteCurseForgeCdnMirror(rawUrl, context = {}) {
   return rawUrl;
 }
 
+function alternateCurseForgeCdnUrl(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl || ""));
+    const host = u.hostname.toLowerCase();
+    if (host === "edge.forgecdn.net") {
+      u.hostname = "mediafilez.forgecdn.net";
+      return u.toString();
+    }
+    if (host === "mediafilez.forgecdn.net") {
+      u.hostname = "edge.forgecdn.net";
+      return u.toString();
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
 async function requestFile(rawUrl, context = {}) {
   let current = await resolveCurseForgeUrl(rawUrl, context);
   let curseForgeSource = false;
@@ -1596,6 +1626,17 @@ async function requestFile(rawUrl, context = {}) {
            checked.url.hostname.toLowerCase().endsWith("forgecdn.net") ||
            checked.url.hostname.toLowerCase().endsWith("mod.mcimirror.top") ||
            context.publicSourceActive)) {
+        if (checked.url.hostname.toLowerCase().endsWith("forgecdn.net")) {
+          const alt = alternateCurseForgeCdnUrl(checked.url.toString());
+          const triedCdn = context._curseForgeCdnUrlsTried instanceof Set
+            ? context._curseForgeCdnUrlsTried
+            : (context._curseForgeCdnUrlsTried = new Set());
+          if (alt && !triedCdn.has(alt)) {
+            triedCdn.add(alt);
+            current = alt;
+            continue;
+          }
+        }
         const tried = curseForgePublicResolverState(context);
         const publicResolvers = [
           ["modpacksch", () => resolveCurseForgeViaModpacksCh(rawUrl, context)],
@@ -1661,15 +1702,9 @@ async function requestFile(rawUrl, context = {}) {
     return null;
   };
 
-  try {
-    const alt = new URL(String(current));
-    const host = alt.hostname.toLowerCase();
-    if (host === "edge.forgecdn.net") alt.hostname = "mediafilez.forgecdn.net";
-    else if (host === "mediafilez.forgecdn.net") alt.hostname = "edge.forgecdn.net";
-    else if (host.endsWith(".forgecdn.net")) alt.hostname = "mediafilez.forgecdn.net";
-    const switched = await tryUrl(alt.toString());
-    if (switched) return switched;
-  } catch {}
+  const officialAlt = alternateCurseForgeCdnUrl(current);
+  const switchedOfficial = await tryUrl(officialAlt);
+  if (switchedOfficial) return switchedOfficial;
 
   for (const alternative of Array.isArray(context.publicAlternativeUrls) ? context.publicAlternativeUrls : []) {
     const switched = await tryUrl(alternative);
