@@ -1448,7 +1448,10 @@ async function requestFile(rawUrl, context = {}) {
       }
       const status = err && err.response && err.response.status;
       if ([401, 403, 404, 408, 425, 429, 500, 502, 503, 504].includes(status) &&
-          (isCurseForgeHost(checked.url.hostname) || context.publicSourceActive)) {
+          (isCurseForgeHost(checked.url.hostname) ||
+           checked.url.hostname.toLowerCase().endsWith("forgecdn.net") ||
+           checked.url.hostname.toLowerCase().endsWith("mod.mcimirror.top") ||
+           context.publicSourceActive)) {
         const tried = curseForgePublicResolverState(context);
         const publicResolvers = [
           ["modpacksch", () => resolveCurseForgeViaModpacksCh(rawUrl, context)],
