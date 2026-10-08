@@ -106,7 +106,7 @@ async function openMyModpacks(){
 async function loadCloudModpack(id){
   try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id)),j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao carregar.");
     const p=j.project;document.getElementById("mc").value=p.minecraft||document.getElementById("mc").value;document.getElementById("loader").value=p.loader||"Forge";document.getElementById("loaderVersion").value=p.loaderVersion||"";
-    linksEl.innerHTML="";(p.links||[]).forEach(addLink);if(!(p.links||[]).length)addLink();currentProjectId=p.id;modpacksModal.hidden=true;setLog("📂 Modpack ""+p.name+"" carregado.");}
+    linksEl.innerHTML="";(p.links||[]).forEach(addLink);if(!(p.links||[]).length)addLink();currentProjectId=p.id;modpacksModal.hidden=true;setLog("📂 Modpack \""+p.name+"\" carregado.");}
   catch(e){setLog("❌ "+e.message);}
 }
 async function deleteCloudModpack(id){if(!confirm("Excluir este modpack da sua conta?"))return;try{const r=await fetch("/api/my-modpacks/"+encodeURIComponent(id),{method:"DELETE"});const j=await r.json();if(!r.ok)throw new Error(j.error||"Falha ao excluir.");openMyModpacks();setLog("🗑️ Modpack excluído.");}catch(e){setLog("❌ "+e.message);}}
