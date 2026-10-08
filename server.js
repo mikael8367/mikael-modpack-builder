@@ -51,7 +51,8 @@ const CURSEFORGE_SEARCH_ALIASES = Object.freeze({
   "foamfix-for-minecraft": ["foamfix-optimization-mod", "foamfix"],
   "projecte-teams": ["projecteteams", "projecte teams"],
   "dynamictrees-biomes-o-plenty": ["dtbop", "dynamic trees biomes o plenty"],
-  "the-aether-ii": ["aether-ii", "aether ii"],
+  "the-aether-ii": ["the-aether-ii-phosphor-not-included", "aether-ii", "aether ii"],
+  "voidcraft": ["voidscape"],
   "traverse-legacy": ["traverse-reforged", "traverse"],
   "forge-multipart-cbe": ["cb-multipart", "forge multipart cbe"],
   "wild-nature": ["wildnature", "wild nature"],
@@ -91,7 +92,11 @@ const CURSEFORGE_PROJECT_ID_FALLBACKS = Object.freeze({
   "forge-multipart-cbe": 258426,
   "cb-multipart": 258426,
   "wild-nature": 320975,
-  "realistic-terrain-generation": 237989
+  "realistic-terrain-generation": 237989,
+  "the-aether-ii": 917199,
+  "the-aether-ii-phosphor-not-included": 917199,
+  "voidcraft": 251730,
+  "voidscape": 251730
 });
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
