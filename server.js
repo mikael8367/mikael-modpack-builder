@@ -175,7 +175,7 @@ function isPrivateIp(ip) {
 async function validatePublicUrl(raw) {
   let u;
   try { u = new URL(raw); } catch { throw new Error("URL inválida."); }
-  if (!["http:", "https:"].includes(u.protocol)) throw new Error("A URL precisa usar http:// ou https://.");
+  if (!["http:", "https:"].includes(u.protocol)) throw new Error("A URL precisa usar http:// ou https://.");\n  if (/^(?:www\\.)?files\\.minecraftforge\\.net$/i.test(u.hostname) && /\\.html?$/i.test(u.pathname)) throw new Error("Esse link é uma página HTML do Forge, não um arquivo de mod. Use o instalador .jar do Forge ou um link de mod.");
   if (u.username || u.password) throw new Error("URLs com usuário ou senha embutidos não são permitidas.");
   if (!u.hostname) throw new Error("URL sem domínio.");
   const hostname = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -2055,7 +2055,7 @@ app.post("/api/build", async (req, res) => {
         let nextIndex = 0;
         let completedLinks = 0;
         let completed = localCount;
-        const totalCount = Math.max(1, job.progress.total);
+        const getTotalCount = () => Math.max(1, Number(job.progress.total || uniqueLinks.length + localCount));
 
         const downloadOne = async (i) => {
           const raw = uniqueLinks[i];
@@ -2105,7 +2105,7 @@ app.post("/api/build", async (req, res) => {
                   reservedBytes = Math.max(0, reservedBytes - releasedReservation);
                 }
                 const filePercent = expected ? Math.min(1, bytes / expected) : 0;
-                const progress = Math.min(85, Math.round(((completed + filePercent) / totalCount) * 85));
+                const progress = Math.min(85, Math.round(((completed + filePercent) / getTotalCount()) * 85));
                 const now = Date.now();
                 const elapsed = Math.max(0.1, (now - job.created) / 1000);
                 if (now - lastProgressAt >= 250 || bytes <= 0) {
@@ -2114,11 +2114,11 @@ app.post("/api/build", async (req, res) => {
                     current: completed,
                     filename,
                     percent: progress,
-                    message: "Baixando " + filename + " • " + completed + "/" + totalCount,
+                    message: "Baixando " + filename + " • " + completed + "/" + getTotalCount(),
                     bytesPerSecond: Math.round(total / elapsed)
                   });
                 }
-                if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) {
+                if (bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES || (expected > 0 && bytes > expected)) {
                   response.data.destroy(new Error("Limite de tamanho excedido."));
                 }
               });
@@ -2156,7 +2156,7 @@ app.post("/api/build", async (req, res) => {
               updateJob(job, {
                 current: completed + 1,
                 filename,
-                percent: Math.min(85, Math.round(((completed + 1) / totalCount) * 85)),
+                percent: Math.min(85, Math.round(((completed + 1) / getTotalCount()) * 85)),
                 message: "✓ " + filename + " baixado",
                 bytesPerSecond: Math.round(total / Math.max(0.1, (Date.now() - job.created) / 1000))
               });
@@ -2198,7 +2198,7 @@ app.post("/api/build", async (req, res) => {
           completed += 1;
           updateJob(job, {
             current: completed,
-            percent: Math.min(85, Math.round((completed / totalCount) * 85)),
+            percent: Math.min(85, Math.round((completed / getTotalCount()) * 85)),
             message: failures.length
               ? "Processando • " + completedLinks + "/" + uniqueLinks.length + " links • " + failures.length + " erro(s)"
               : "Processando • " + completedLinks + "/" + uniqueLinks.length + " links",
@@ -2240,7 +2240,7 @@ app.post("/api/build", async (req, res) => {
           output.on("close", resolve);
           output.on("error", reject);
           archive.on("error", reject);
-          archive.on("warning", reject);
+          archive.on("warning", err => {\n            if (err && err.code === "ENOENT") {\n              addJobLog(job, "warn", "Aviso não fatal do ZIP", { error: err.message || String(err) });\n              return;\n            }\n            reject(err);\n          });
           archive.pipe(output);
           Promise.resolve(archive.finalize()).catch(reject);
         });
