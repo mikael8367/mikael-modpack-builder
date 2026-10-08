@@ -175,7 +175,8 @@ function isPrivateIp(ip) {
 async function validatePublicUrl(raw) {
   let u;
   try { u = new URL(raw); } catch { throw new Error("URL inválida."); }
-  if (!["http:", "https:"].includes(u.protocol)) throw new Error("A URL precisa usar http:// ou https://.");\n  if (/^(?:www\\.)?files\\.minecraftforge\\.net$/i.test(u.hostname) && /\\.html?$/i.test(u.pathname)) throw new Error("Esse link é uma página HTML do Forge, não um arquivo de mod. Use o instalador .jar do Forge ou um link de mod.");
+  if (!["http:", "https:"].includes(u.protocol)) throw new Error("A URL precisa usar http:// ou https://.");
+  if (/^(?:www\.)?files\.minecraftforge\.net$/i.test(u.hostname) && /\.html?$/i.test(u.pathname)) throw new Error("Esse link é uma página HTML do Forge, não um arquivo de mod. Use o instalador .jar do Forge ou um link de mod.");
   if (u.username || u.password) throw new Error("URLs com usuário ou senha embutidos não são permitidas.");
   if (!u.hostname) throw new Error("URL sem domínio.");
   const hostname = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
@@ -2240,7 +2241,13 @@ app.post("/api/build", async (req, res) => {
           output.on("close", resolve);
           output.on("error", reject);
           archive.on("error", reject);
-          archive.on("warning", err => {\n            if (err && err.code === "ENOENT") {\n              addJobLog(job, "warn", "Aviso não fatal do ZIP", { error: err.message || String(err) });\n              return;\n            }\n            reject(err);\n          });
+          archive.on("warning", err => {
+            if (err && err.code === "ENOENT") {
+              addJobLog(job, "warn", "Aviso não fatal do ZIP", { error: err.message || String(err) });
+              return;
+            }
+            reject(err);
+          });
           archive.pipe(output);
           Promise.resolve(archive.finalize()).catch(reject);
         });
