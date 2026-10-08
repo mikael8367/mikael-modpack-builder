@@ -15,7 +15,82 @@ let activeBuilds = 0;
 const MAX_CONCURRENT_BUILDS = 2;
 
 const app = express();
+const accounts = require("./account-store");
+
+function parseCookies(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const i = part.indexOf("=");
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+async function currentUser(req) {
+  return accounts.getUserByToken(parseCookies(req).mikael_session);
+}
+function authCookie(token) {
+  return "mikael_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + (30 * 86400);
+}
+function clearAuthCookie() {
+  return "mikael_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+}
+async function requireUser(req, res) {
+  const user = await currentUser(req);
+  if (!user) {
+    res.status(401).json({ error: "Faça login ou crie uma conta primeiro." });
+    return null;
+  }
+  return user;
+}
+
 app.use(express.json({ limit: "8mb" }));
+
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const user = await accounts.createUser(req.body?.username, req.body?.password);
+    const logged = await accounts.login(req.body?.username, req.body?.password);
+    res.setHeader("Set-Cookie", authCookie(logged.token));
+    res.json({ ok: true, user });
+  } catch (e) { res.status(400).json({ error: e.message || "Não foi possível criar a conta." }); }
+});
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const logged = await accounts.login(req.body?.username, req.body?.password);
+    res.setHeader("Set-Cookie", authCookie(logged.token));
+    res.json({ ok: true, user: logged.user });
+  } catch (e) { res.status(401).json({ error: e.message || "Não foi possível entrar." }); }
+});
+app.post("/api/auth/logout", async (req, res) => {
+  try { await accounts.logout(parseCookies(req).mikael_session); } catch {}
+  res.setHeader("Set-Cookie", clearAuthCookie());
+  res.json({ ok: true });
+});
+app.get("/api/auth/me", async (req, res) => {
+  res.json({ user: await currentUser(req) });
+});
+app.get("/api/my-modpacks", async (req, res) => {
+  const user = await requireUser(req, res); if (!user) return;
+  res.json({ projects: await accounts.listProjects(user.id) });
+});
+app.get("/api/my-modpacks/:id", async (req, res) => {
+  const user = await requireUser(req, res); if (!user) return;
+  const project = await accounts.getProject(user.id, req.params.id);
+  if (!project) return res.status(404).json({ error: "Modpack não encontrado." });
+  res.json({ project });
+});
+app.post("/api/my-modpacks", async (req, res) => {
+  const user = await requireUser(req, res); if (!user) return;
+  try {
+    const project = await accounts.saveProject(user.id, req.body || {});
+    res.json({ ok: true, project });
+  } catch (e) { res.status(400).json({ error: e.message || "Não foi possível salvar o modpack." }); }
+});
+app.delete("/api/my-modpacks/:id", async (req, res) => {
+  const user = await requireUser(req, res); if (!user) return;
+  const ok = await accounts.deleteProject(user.id, req.params.id);
+  if (!ok) return res.status(404).json({ error: "Modpack não encontrado." });
+  res.json({ ok: true });
+});
 app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 3000;
 const MAX_LINKS = 999999;
@@ -160,6 +235,7 @@ async function cleanupOrphanedTempData() {
   }));
 }
 
+accounts.ensureStore().catch(err => console.error("Falha ao iniciar armazenamento de contas:", err));
 cleanupOrphanedTempData().catch(() => {});
 app.post("/api/upload-files", uploadBodyGuard, upload.array("files"), async (req, res) => {
   const files = req.files || [];
