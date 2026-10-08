@@ -1262,7 +1262,6 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       return String(downloadUrl);
     }
 
-    const loaderType = loaderMap[String(context.modLoader || "")];
     if (!loaderType) throw new Error("Para links de projeto do CurseForge, selecione um modloader conhecido ou use uma URL direta do arquivo.");
     let files = await curseForgeApiGet("/mods/" + found.id + "/files", {
       gameVersion: String(context.minecraftVersion || ""),
