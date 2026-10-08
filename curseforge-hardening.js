@@ -48,6 +48,14 @@ function isCurseForgeFiles(url) {
   }
 }
 
+const SEARCH_ALIASES = {
+  "foamfix-for-minecraft": ["foamfix-optimization-mod", "foamfix"],
+  "projecte-teams": ["projecteteams", "projecte teams"],
+  "dynamictrees-biomes-o-plenty": ["dtbop", "dynamic trees biomes o plenty"],
+  "the-aether-ii": ["aether-ii", "aether ii"],
+  "traverse-legacy": ["traverse-reforged", "traverse"]
+};
+
 function bestProjectHit(hits, wanted) {
   const w = normalize(wanted);
   return uniqueHits(hits).map(hit => {
@@ -101,10 +109,20 @@ axios.get = async function hardenedAxiosGet(url, config = {}) {
   const exact = bestProjectHit(originalHits, wanted);
   if (exact && Number(exact.classId || 0) === 6 && normalize(exact.slug) === normalize(wanted)) return originalResponse;
 
+  const aliasTerms = SEARCH_ALIASES[normalize(wanted)] || [];
+  const searchTerms = [...new Set([
+    wanted,
+    wanted.replace(/[-_]+/g, " "),
+    wanted.replace(/[-_]+/g, ""),
+    ...aliasTerms
+  ].filter(Boolean))];
   const attempts = [
     { ...baseParams, classId: 6, slug: wanted, searchFilter: undefined },
-    { ...baseParams, classId: 6, searchFilter: wanted.replace(/[-_]+/g, " ") },
-    { ...baseParams, classId: 6, searchFilter: wanted.replace(/[-_]+/g, "") }
+    ...searchTerms.map(term => ({
+      ...baseParams,
+      classId: 6,
+      searchFilter: term
+    }))
   ];
 
   const collected = [...originalHits];
