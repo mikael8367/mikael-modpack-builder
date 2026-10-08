@@ -659,6 +659,7 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
   try {
     const search = await curseForgePublicProxyGet("/mods/search", {
       gameId: CURSEFORGE_GAME_ID,
+      classId: 6,
       searchFilter: slug,
       pageSize: 50,
       index: 0
@@ -712,7 +713,8 @@ async function resolveCurseForgeViaPublicProxy(rawUrl, context = {}) {
     ? files.filter(f =>
         isReleasedCurseForgeFile(f) &&
         Array.isArray(f.gameVersions) &&
-        f.gameVersions.includes(wantedVersion)
+        f.gameVersions.includes(wantedVersion) &&
+        Number(f.modLoader || loaderType) === loaderType
       )
     : [];
 
