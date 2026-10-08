@@ -213,6 +213,41 @@ function isReleasedCurseForgeFile(file) {
     file.isServerPack !== true;
 }
 
+async function resolveCurseForgeRequiredDependencies(file, context = {}) {
+  if (!CURSEFORGE_API_KEY || !Array.isArray(file?.dependencies)) return [];
+  const wantedVersion = String(context.minecraftVersion || "").trim();
+  const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
+  const loaderType = loaderMap[String(context.modLoader || "")];
+  if (!wantedVersion || !loaderType) return [];
+  const required = file.dependencies.filter(dep => [3, 6].includes(Number(dep?.relationType)) && Number(dep?.modId) > 0);
+  const urls = [];
+  for (const dep of required.slice(0, 50)) {
+    try {
+      const depFiles = await curseForgeApiGet("/mods/" + Number(dep.modId) + "/files", {
+        gameVersion: wantedVersion,
+        modLoaderType: loaderType,
+        pageSize: 50,
+        sortField: 11,
+        sortOrder: "desc"
+      });
+      const candidates = Array.isArray(depFiles)
+        ? depFiles.filter(f =>
+            isReleasedCurseForgeFile(f) &&
+            Array.isArray(f.gameVersions) &&
+            f.gameVersions.includes(wantedVersion) &&
+            (!f.modLoader || Number(f.modLoader) === 0 || Number(f.modLoader) === loaderType)
+          )
+        : [];
+      const selected = candidates.find(f => Number(f.releaseType) === 1) || candidates.find(f => Number(f.releaseType) === 2) || candidates[0];
+      if (!selected) continue;
+      let url = selected.downloadUrl || "";
+      if (!url) url = await curseForgeApiGet("/mods/" + Number(dep.modId) + "/files/" + Number(selected.id) + "/download-url");
+      if (url) urls.push(String(url));
+    } catch {}
+  }
+  return [...new Set(urls)];
+}
+
 async function apiDelay(retry) {
   await sleep(API_RETRY_BASE_MS * Math.pow(2, retry));
 }
@@ -1120,6 +1155,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       selectedDownloadUrl = await curseForgeApiGet("/mods/" + found.id + "/files/" + selected.id + "/download-url");
     }
     if (!selectedDownloadUrl) throw new Error("O arquivo de " + slug + " não possui URL de download disponível.");
+    context.dependencyUrls = await resolveCurseForgeRequiredDependencies(selected, context);
     return String(selectedDownloadUrl);
   } catch (err) {
     const status = Number(err?.response?.status || 0);
@@ -2087,6 +2123,17 @@ app.post("/api/build", async (req, res) => {
               addJobLog(job, "success", "Integridade do arquivo verificada", { index: i + 1, filename, bytes, hashVerification: context.expectedHashes ? "hashes publicados verificados" : "nenhum hash publicado disponível" });
 
               files.push({ filename, target, source: raw, size: bytes, resolvedFrom: context.resolvedFrom || null });
+              if (Array.isArray(context.dependencyUrls) && context.dependencyUrls.length) {
+                for (const dependencyUrl of context.dependencyUrls) {
+                  if (!uniqueLinks.includes(dependencyUrl)) uniqueLinks.push(dependencyUrl);
+                }
+                job.progress.total = uniqueLinks.length + localCount;
+                addJobLog(job, "info", "Dependências obrigatórias adicionadas", {
+                  index: i + 1,
+                  originalUrl: raw,
+                  dependenciesAdded: context.dependencyUrls.length
+                });
+              }
               addJobLog(job, "success", "Download concluído", { index: i + 1, filename, bytes, originalUrl: raw, resolvedFrom: context.resolvedFrom || (context.publicApiFallback ? "fonte pública alternativa" : "URL direta"), publicApiFallback: Boolean(context.publicApiFallback), publicProxyUsed: Boolean(context.publicProxyUsed) });
               success = true;
               updateJob(job, {
