@@ -1129,14 +1129,14 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
     const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
     const loaderType = loaderMap[String(context.modLoader || "")];
     if (!loaderType) throw new Error("Para links de projeto do CurseForge, selecione um modloader conhecido ou use uma URL direta do arquivo.");
-    const files = await curseForgeApiGet("/mods/" + found.id + "/files", {
+    let files = await curseForgeApiGet("/mods/" + found.id + "/files", {
       gameVersion: String(context.minecraftVersion || ""),
       modLoaderType: loaderType,
       pageSize: 50,
       sortField: 11,
       sortOrder: "desc"
     });
-    const candidates = Array.isArray(files)
+    let candidates = Array.isArray(files)
       ? files.filter(f =>
           isReleasedCurseForgeFile(f) &&
           Array.isArray(f.gameVersions) &&
@@ -1144,6 +1144,25 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
           Number(f.modLoader || loaderType) === loaderType
         )
       : [];
+
+    // Old 1.12.2 CurseForge files often have no modLoader metadata. If the
+    // loader-filtered endpoint returns nothing, query by Minecraft version
+    // alone and apply the compatibility check locally.
+    if (!candidates.length) {
+      const legacyFiles = await curseForgeApiGet("/mods/" + found.id + "/files", {
+        gameVersion: String(context.minecraftVersion || ""),
+        pageSize: 50,
+        sortField: 11,
+        sortOrder: "desc"
+      });
+      files = Array.isArray(legacyFiles) ? legacyFiles : [];
+      candidates = files.filter(f =>
+        isReleasedCurseForgeFile(f) &&
+        Array.isArray(f.gameVersions) &&
+        f.gameVersions.includes(String(context.minecraftVersion || "")) &&
+        (!f.modLoader || Number(f.modLoader) === 0 || Number(f.modLoader) === loaderType)
+      );
+    }
     const usable = candidates.filter(isReleasedCurseForgeFile);
     const selected = usable.find(f => Number(f.releaseType) === 1) || usable.find(f => Number(f.releaseType) === 2) || usable[0];
     if (!selected) {
