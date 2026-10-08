@@ -47,6 +47,29 @@ const CURSEFORGE_PUBLIC_PROXY_BASES = [...new Set(
 )];
 const CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS = 900;
 const CURSEFORGE_GAME_ID = 432;
+const CURSEFORGE_PROJECT_ID_FALLBACKS = Object.freeze({
+  "foamfix-for-minecraft": 278494,
+  "foamfix-optimization-mod": 278494,
+  "betterfps": 229876,
+  "phosphor-forge": 318255,
+  "baubles": 227083,
+  "opencomputers": 223008,
+  "thaumcraft": 223628,
+  "waystones": 245755,
+  "atum": 59621,
+  "natura": 74120,
+  "project-expanse": 377600,
+  "projecte-teams": 1090134,
+  "projecteteams": 1090134,
+  "dynamictrees-biomes-o-plenty": 289529,
+  "dtbop": 289529,
+  "traverse-legacy": 267769,
+  "traverse-reforged": 267769,
+  "forge-multipart-cbe": 258426,
+  "cb-multipart": 258426,
+  "wild-nature": 320975,
+  "realistic-terrain-generation": 237989
+});
 const GITHUB_API_BASE = "https://api.github.com";
 const GITHUB_CACHE_TTL_MS = 10 * 60 * 1000;
 const GITHUB_MIN_REQUEST_INTERVAL_MS = 1200;
@@ -1070,6 +1093,17 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       .map(hit => ({ hit, score: scoreCurseForgeCandidate(hit, slug) }))
       .sort((a, b) => b.score - a.score)[0]?.hit || null;
     if (found && scoreCurseForgeCandidate(found, slug) < 2500) found = null;
+
+    // Alguns projetos antigos do Minecraft 1.12.2 têm busca por slug instável
+    // mesmo existindo na API. Use o ID oficial conhecido como fallback determinístico.
+    const fallbackProjectId = CURSEFORGE_PROJECT_ID_FALLBACKS[String(slug).toLowerCase()];
+    if (fallbackProjectId) {
+      try {
+        const fallbackProject = await curseForgeApiGet("/mods/" + fallbackProjectId);
+        if (fallbackProject?.id) found = fallbackProject;
+      } catch {}
+    }
+
     if (!found) {
       const wantedVersion = String(context.minecraftVersion || "").trim();
       const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
