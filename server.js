@@ -2010,7 +2010,7 @@ app.post("/api/build", async (req, res) => {
     tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "mikael-modpack-"));
     const job = {
       tempDir, zipPath: null, zipName: null, status: "running", created: Date.now(), lastAccess: Date.now(), downloads: 0, clients: new Set(),
-      progress: { status: "starting", current: 0, total: uniqueLinks.length, percent: 0, filename: "", message: "Iniciando..." },
+      progress: { status: "starting", current: 0, total: uniqueLinks.length, originalLinksTotal: uniqueLinks.length, dependencyLinksTotal: 0, percent: 0, filename: "", message: "Iniciando..." },
       logs: []
     };
     addJobLog(job, "info", "Build iniciado", { minecraftVersion, modLoader, loaderVersion: loaderVersion || "não informado", links: uniqueLinks.length, localFiles: uploadId ? (uploads.get(uploadId)?.files?.length || 0) : 0, officialCurseForgeKeyConfigured: Boolean(CURSEFORGE_API_KEY), publicResolvers: CURSEFORGE_PUBLIC_PROXY_BASES.map(x => new URL(x).hostname) });
@@ -2142,15 +2142,22 @@ app.post("/api/build", async (req, res) => {
 
               files.push({ filename, target, source: raw, size: bytes, resolvedFrom: context.resolvedFrom || null });
               if (Array.isArray(context.dependencyUrls) && context.dependencyUrls.length) {
+                let dependenciesAdded = 0;
                 for (const dependencyUrl of context.dependencyUrls) {
-                  if (!uniqueLinks.includes(dependencyUrl)) uniqueLinks.push(dependencyUrl);
+                  if (!uniqueLinks.includes(dependencyUrl)) {
+                    uniqueLinks.push(dependencyUrl);
+                    dependenciesAdded += 1;
+                  }
                 }
-                job.progress.total = uniqueLinks.length + localCount;
-                addJobLog(job, "info", "Dependências obrigatórias adicionadas", {
-                  index: i + 1,
-                  originalUrl: raw,
-                  dependenciesAdded: context.dependencyUrls.length
-                });
+                if (dependenciesAdded > 0) {
+                  job.progress.dependencyLinksTotal = Number(job.progress.dependencyLinksTotal || 0) + dependenciesAdded;
+                  job.progress.total = uniqueLinks.length + localCount;
+                  addJobLog(job, "info", "Dependências obrigatórias adicionadas", {
+                    index: i + 1,
+                    originalUrl: raw,
+                    dependenciesAdded
+                  });
+                }
               }
               addJobLog(job, "success", "Download concluído", { index: i + 1, filename, bytes, originalUrl: raw, resolvedFrom: context.resolvedFrom || (context.publicApiFallback ? "fonte pública alternativa" : "URL direta"), publicApiFallback: Boolean(context.publicApiFallback), publicProxyUsed: Boolean(context.publicProxyUsed) });
               success = true;
@@ -2216,7 +2223,21 @@ app.post("/api/build", async (req, res) => {
         });
         await Promise.all(workers);
 
-        addJobLog(job, failures.length ? "warn" : "success", "Downloads finalizados", { requestedLinks: uniqueLinks.length, downloadedFiles: files.length, failedLinks: failures.length, downloadedBytes: total, failed: failures.map(f => ({ url: redactUrl(f.url), error: f.error })) });
+        addJobLog(job, failures.length ? "warn" : "success", "Downloads finalizados", {
+          requestedLinks: uniqueLinks.length,
+          originalLinks: Number(job.progress.originalLinksTotal || uniqueLinks.length),
+          dependencyLinks: Number(job.progress.dependencyLinksTotal || 0),
+          downloadedFiles: files.length,
+          failedLinks: failures.length,
+          downloadedBytes: total,
+          failed: failures.map(f => ({ url: redactUrl(f.url), error: f.error }))
+        });
+        updateJob(job, {
+          originalLinksTotal: Number(job.progress.originalLinksTotal || uniqueLinks.length),
+          dependencyLinksTotal: Number(job.progress.dependencyLinksTotal || 0),
+          downloadedFiles: files.length,
+          failedLinks: failures.length
+        });
         if (!files.length) throw new Error("Nenhum arquivo válido pôde ser incluído no ZIP.");
         const orderedFiles = [...files].sort((a, b) => String(a.filename).localeCompare(String(b.filename), "en", { sensitivity: "base" }) || String(a.source).localeCompare(String(b.source), "en"));
         updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
@@ -2258,7 +2279,17 @@ app.post("/api/build", async (req, res) => {
         job.zipName = zipName;
         job.status = "done";
         job.lastAccess = Date.now();
-        updateJob(job, { status: "done", percent: 100, current: job.progress.total, message: failures.length ? `⚠️ ZIP pronto: ${files.length} baixados, ${failures.length} com erro.` : "✅ Todos os mods foram instalados e o ZIP está pronto!", failures });
+        updateJob(job, {
+          status: "done",
+          percent: 100,
+          current: job.progress.total,
+          originalLinksTotal: Number(job.progress.originalLinksTotal || uniqueLinks.length),
+          dependencyLinksTotal: Number(job.progress.dependencyLinksTotal || 0),
+          downloadedFiles: files.length,
+          failedLinks: failures.length,
+          message: failures.length ? `⚠️ ZIP pronto: ${files.length} baixados, ${failures.length} com erro.` : "✅ Todos os mods foram instalados e o ZIP está pronto!",
+          failures
+        });
       } catch (e) {
         job.status = "error";
         addJobLog(job, "error", "Build falhou", { error: e.message || "Não foi possível gerar o ZIP.", code: e.code || "", httpStatus: Number(e?.response?.status || e?.status || 0) || null, stack: String(e.stack || "").slice(0, 3000) });
