@@ -47,6 +47,9 @@ const CURSEFORGE_PUBLIC_PROXY_BASES = [...new Set(
 )];
 const CURSEFORGE_PROXY_MIN_REQUEST_INTERVAL_MS = 900;
 const CURSEFORGE_GAME_ID = 432;
+const CURSEFORGE_DIRECT_DOWNLOAD_FALLBACKS = Object.freeze({
+  "realistic-terrain-generation|1.12.2": "https://edge.forgecdn.net/files/2782/568/RTG-1.12.2-6.1.0.0-snapshot.1.jar"
+});
 const CURSEFORGE_SEARCH_ALIASES = Object.freeze({
   "foamfix-for-minecraft": ["foamfix-optimization-mod", "foamfix"],
   "projecte-teams": ["projecteteams", "projecte teams"],
@@ -1627,6 +1630,19 @@ async function requestFile(rawUrl, context = {}) {
            checked.url.hostname.toLowerCase().endsWith("mod.mcimirror.top") ||
            context.publicSourceActive)) {
         if (checked.url.hostname.toLowerCase().endsWith("forgecdn.net")) {
+          const rawLower = String(rawUrl || "").toLowerCase();
+          const directFallbackKey = rawLower.includes("/mc-mods/realistic-terrain-generation") && String(context.minecraftVersion || "") === "1.12.2"
+            ? "realistic-terrain-generation|1.12.2"
+            : "";
+          const directFallback = directFallbackKey ? CURSEFORGE_DIRECT_DOWNLOAD_FALLBACKS[directFallbackKey] : "";
+          const directTried = context._curseForgeDirectFallbacksTried instanceof Set
+            ? context._curseForgeDirectFallbacksTried
+            : (context._curseForgeDirectFallbacksTried = new Set());
+          if (directFallback && !directTried.has(directFallback)) {
+            directTried.add(directFallback);
+            current = directFallback;
+            continue;
+          }
           const alt = alternateCurseForgeCdnUrl(checked.url.toString());
           const triedCdn = context._curseForgeCdnUrlsTried instanceof Set
             ? context._curseForgeCdnUrlsTried
