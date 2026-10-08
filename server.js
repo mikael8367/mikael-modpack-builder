@@ -1924,6 +1924,16 @@ function redactUrl(rawUrl) {
   }
 }
 
+async function fileSha256(filePath) {
+  return await new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", chunk => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex").toLowerCase()));
+  });
+}
+
 async function verifyFileIntegrity(filePath, hashes, filename) {
   if (!hashes) return;
   const expected = {};
@@ -2369,6 +2379,9 @@ app.post("/api/build", async (req, res) => {
         }
 
         const failures = [];
+        // Deduplicação por conteúdo: URLs diferentes podem apontar para o mesmo JAR.
+        // Isso evita colocar o mesmo mod duas vezes no ZIP (ex.: arquivo original + dependência).
+        const downloadedHashes = new Set();
         let nextIndex = 0;
         let completedLinks = 0;
         let completed = localCount;
@@ -2456,7 +2469,28 @@ app.post("/api/build", async (req, res) => {
               await verifyFileIntegrity(target, context.expectedHashes, filename);
               addJobLog(job, "success", "Integridade do arquivo verificada", { index: i + 1, filename, bytes, hashVerification: context.expectedHashes ? "hashes publicados verificados" : "nenhum hash publicado disponível" });
 
-              files.push({ filename, target, source: raw, size: bytes, resolvedFrom: context.resolvedFrom || null });
+              const contentHash = await fileSha256(target);
+              if (downloadedHashes.has(contentHash)) {
+                await fsp.rm(target, { force: true }).catch(() => {});
+                total = Math.max(0, total - bytes);
+                addJobLog(job, "warn", "Mod duplicado ignorado", {
+                  index: i + 1,
+                  originalUrl: raw,
+                  filename,
+                  bytes,
+                  sha256: contentHash
+                });
+                success = true;
+                updateJob(job, {
+                  current: completed + 1,
+                  filename,
+                  percent: Math.min(85, Math.round(((completed + 1) / getTotalCount()) * 85)),
+                  message: "↪ " + filename + " já estava no pacote; duplicata ignorada"
+                });
+              } else {
+                downloadedHashes.add(contentHash);
+                files.push({ filename, target, source: raw, size: bytes, resolvedFrom: context.resolvedFrom || null });
+              }
               if (Array.isArray(context.dependencyUrls) && context.dependencyUrls.length) {
                 let dependenciesAdded = 0;
                 for (const dependencyUrl of context.dependencyUrls) {
