@@ -1262,7 +1262,6 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       return String(downloadUrl);
     }
 
-    const loaderMap = { Forge: 1, Fabric: 4, LiteLoader: 3, Quilt: 5, NeoForge: 6 };
     const loaderType = loaderMap[String(context.modLoader || "")];
     if (!loaderType) throw new Error("Para links de projeto do CurseForge, selecione um modloader conhecido ou use uma URL direta do arquivo.");
     let files = await curseForgeApiGet("/mods/" + found.id + "/files", {
