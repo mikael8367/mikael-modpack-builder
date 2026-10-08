@@ -99,7 +99,7 @@ axios.get = async function hardenedAxiosGet(url, config = {}) {
   // The documented API supports slug + classId as a unique project lookup.
   // Prefer that path when the free-text search did not return the exact mod.
   const exact = bestProjectHit(originalHits, wanted);
-  if (exact && normalize(exact.slug) === normalize(wanted)) return originalResponse;
+  if (exact && Number(exact.classId || 0) === 6 && normalize(exact.slug) === normalize(wanted)) return originalResponse;
 
   const attempts = [
     { ...baseParams, classId: 6, slug: wanted, searchFilter: undefined },
