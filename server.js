@@ -1341,6 +1341,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
       if (file.isServerPack === true) throw new Error("O arquivo CurseForge " + fileId + " é um server pack e não será colocado em mods/.");
       context.expectedHashes = file.hashes || null;
       context.expectedSize = Number(file.fileLength || 0) || null;
+      context.artifactKey = "curseforge:file:" + Number(file.id);
       const downloadUrl = file.downloadUrl || await curseForgeApiGet("/mods/" + found.id + "/files/" + fileId + "/download-url");
       if (!downloadUrl) throw new Error("Arquivo CurseForge " + fileId + " não possui URL de download.");
       return String(downloadUrl);
@@ -1402,6 +1403,7 @@ async function resolveCurseForgeUrl(rawUrl, context = {}) {
     }
     context.expectedHashes = selected.hashes || null;
     context.expectedSize = Number(selected.fileLength || 0) || null;
+    context.artifactKey = "curseforge:file:" + Number(selected.id);
     let selectedDownloadUrl = selected.downloadUrl || "";
     if (!selectedDownloadUrl) {
       selectedDownloadUrl = await curseForgeApiGet("/mods/" + found.id + "/files/" + selected.id + "/download-url");
@@ -1499,6 +1501,10 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
       if (directFile) {
         context.expectedHashes = directFile.hashes || null;
         context.expectedSize = Number(directFile.size || 0) || null;
+        const strongFileId = strongPublishedHash(directFile.hashes) || directFile.filename || urlFileName;
+        context.artifactKey = "modrinth:version:" + directVersionId + ":file:" + String(strongFileId);
+      } else {
+        context.artifactKey = "modrinth:version:" + directVersionId;
       }
     }
     if (!u.searchParams.has("mr_download_reason")) {
@@ -1536,6 +1542,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
       const versionPrimary = versionFiles.find(f => f && f.primary) || versionFiles[0];
       if (versionPrimary && versionPrimary.hashes) context.expectedHashes = versionPrimary.hashes;
       if (versionPrimary && versionPrimary.size) context.expectedSize = Number(versionPrimary.size) || null;
+      context.artifactKey = "modrinth:version:" + String(version.id) + ":file:" + (strongPublishedHash(versionPrimary?.hashes) || versionPrimary?.filename || "primary");
       projectData = { title: version.name || version.version_number || versionId };
     } catch (err) {
       const status = err && err.response && err.response.status;
@@ -1614,6 +1621,7 @@ async function resolveModrinthUrl(rawUrl, context = {}) {
   if (!primary || !primary.url) throw new Error("O projeto Modrinth não possui um arquivo principal para download.");
   context.expectedHashes = primary.hashes || null;
   context.expectedSize = Number(primary.size || 0) || null;
+  context.artifactKey = "modrinth:version:" + String(selected.id) + ":file:" + (strongPublishedHash(primary.hashes) || primary.filename || "primary");
   const selectedFilename = String(primary.filename || "").trim();
   if (selectedFilename && !/\.(jar|zip)$/i.test(selectedFilename)) {
     throw new Error("O arquivo principal do Modrinth (" + selectedFilename + ") não é um JAR/ZIP de mod.");
@@ -1922,6 +1930,64 @@ function redactUrl(rawUrl) {
   } catch {
     return String(rawUrl || "").slice(0, 500);
   }
+}
+
+function normalizeDuplicateUrl(rawUrl) {
+  const raw = String(rawUrl || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    u.hash = "";
+    u.hostname = u.hostname.toLowerCase();
+    if ((u.protocol === "https:" && u.port === "443") || (u.protocol === "http:" && u.port === "80")) u.port = "";
+    u.pathname = u.pathname.replace(/\/{2,}/g, "/");
+    if (u.pathname.length > 1) u.pathname = u.pathname.replace(/\/$/, "");
+    const params = [...u.searchParams.entries()].sort((a, b) => {
+      const ak = String(a[0]).toLowerCase();
+      const bk = String(b[0]).toLowerCase();
+      return ak.localeCompare(bk) || String(a[1]).localeCompare(String(b[1]));
+    });
+    u.search = "";
+    for (const [key, value] of params) u.searchParams.append(key, value);
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function curseForgeCdnArtifactKey(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl || ""));
+    if (!isCurseForgeHost(u.hostname)) return "";
+    const parts = u.pathname.split("/").filter(Boolean);
+    const lower = parts.map(p => p.toLowerCase());
+    const filesAt = lower.indexOf("files");
+    if (filesAt >= 0 && /^\d+$/.test(parts[filesAt + 1] || "") && /^\d+$/.test(parts[filesAt + 2] || "")) {
+      const shardA = Number(parts[filesAt + 1]);
+      const shardB = Number(parts[filesAt + 2]);
+      if (Number.isSafeInteger(shardA) && Number.isSafeInteger(shardB)) {
+        return "curseforge:file:" + (shardA * 1000 + shardB);
+      }
+    }
+    const downloadAt = lower.indexOf("download");
+    if (downloadAt >= 0 && /^\d+$/.test(parts[downloadAt + 1] || "")) {
+      return "curseforge:file:" + Number(parts[downloadAt + 1]);
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+function strongPublishedHash(hashes) {
+  if (Array.isArray(hashes)) {
+    const byAlgo = new Map(hashes.filter(x => x && x.value).map(x => [Number(x.algo), String(x.value).toLowerCase()]));
+    return byAlgo.get(1) || byAlgo.get(2) || byAlgo.get(3) || "";
+  }
+  if (hashes && typeof hashes === "object") {
+    return String(hashes.sha512 || hashes.sha1 || hashes.md5 || "").toLowerCase();
+  }
+  return "";
 }
 
 async function fileSha256(filePath) {
@@ -2325,8 +2391,14 @@ app.post("/api/build", async (req, res) => {
   if (!links.length && !uploadId) return res.status(400).json({ error: "Adicione pelo menos um link ou arquivo." });
   if (links.length > MAX_LINKS) return res.status(400).json({ error: `Máximo de ${MAX_LINKS} links por ZIP.` });
   const cleanLinks = links.map(x => String(x || "").trim()).filter(Boolean);
-  const uniqueLinks = [...new Set(cleanLinks)];
-  if (uniqueLinks.length !== cleanLinks.length) return res.status(400).json({ error: "Há links repetidos na lista." });
+  const seenLinkKeys = new Set();
+  const uniqueLinks = [];
+  for (const link of cleanLinks) {
+    const key = normalizeDuplicateUrl(link);
+    if (seenLinkKeys.has(key)) return res.status(400).json({ error: "Há links repetidos ou equivalentes na lista (mesma URL com diferenças de caixa, porta padrão, barra final, fragmento ou ordem dos parâmetros)." });
+    seenLinkKeys.add(key);
+    uniqueLinks.push(link);
+  }
 
   let localUpload = null;
   let tempDir;
@@ -2352,11 +2424,16 @@ app.post("/api/build", async (req, res) => {
     res.json({ id });
 
     (async () => {
-      const files = [];
+      let files = [];
       let total = 0;
       const reservedNames = new Set();
       let reservedBytes = 0;
       const localCount = localUpload ? localUpload.files.length : 0;
+      // Deduplicação em camadas: URL canônica, identidade do artefato, hash publicado,
+      // SHA-256 real do conteúdo e auditoria final antes do ZIP.
+      const downloadedHashes = new Set();
+      const seenArtifactKeys = new Set();
+      let localProcessed = 0;
       try {
         if (localUpload) {
           job.progress.total = uniqueLinks.length + localUpload.files.length;
@@ -2365,23 +2442,33 @@ app.post("/api/build", async (req, res) => {
             const target = path.join(tempDir, f.filename);
             await fsp.copyFile(f.path, target);
             const st = await fsp.stat(target);
+            const contentHash = await fileSha256(target);
+            if (downloadedHashes.has(contentHash)) {
+              await fsp.rm(target, { force: true }).catch(() => {});
+              addJobLog(job, "warn", "Arquivo local duplicado ignorado", { localFilename: f.filename, bytes: st.size, sha256: contentHash });
+              localProcessed += 1;
+              updateJob(job, {
+                current: localProcessed, filename: f.filename,
+                percent: Math.min(85, Math.round(localProcessed / Math.max(1, job.progress.total) * 85)),
+                message: "↪ " + f.filename + " já estava no pacote; duplicata local ignorada"
+              });
+              continue;
+            }
+            downloadedHashes.add(contentHash);
             total += st.size;
             if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 5 GB.");
             reservedNames.add(f.filename.toLowerCase());
-            files.push({ filename: f.filename, target, source: "arquivo local", size: st.size });
-            const current = files.length;
+            files.push({ filename: f.filename, target, source: "arquivo local", size: st.size, contentHash });
+            localProcessed += 1;
             updateJob(job, {
-              current, filename: f.filename,
-              percent: Math.min(85, Math.round(current / Math.max(1, job.progress.total) * 85)),
-              message: `✓ ${f.filename} adicionado`
+              current: localProcessed, filename: f.filename,
+              percent: Math.min(85, Math.round(localProcessed / Math.max(1, job.progress.total) * 85)),
+              message: "✓ " + f.filename + " adicionado"
             });
           }
         }
 
         const failures = [];
-        // Deduplicação por conteúdo: URLs diferentes podem apontar para o mesmo JAR.
-        // Isso evita colocar o mesmo mod duas vezes no ZIP (ex.: arquivo original + dependência).
-        const downloadedHashes = new Set();
         let nextIndex = 0;
         let completedLinks = 0;
         let completed = localCount;
@@ -2406,6 +2493,19 @@ app.post("/api/build", async (req, res) => {
               const result = await requestFile(raw, context);
               response = result.response;
               const url = result.url;
+              const resolvedArtifactKey = String(context.artifactKey || "") || curseForgeCdnArtifactKey(url) || (strongPublishedHash(context.expectedHashes) ? "sha:" + strongPublishedHash(context.expectedHashes) : "");
+              if (resolvedArtifactKey && seenArtifactKeys.has(resolvedArtifactKey)) {
+                if (response?.data) response.data.destroy();
+                addJobLog(job, "warn", "Artefato duplicado ignorado antes do download", {
+                  index: i + 1,
+                  originalUrl: raw,
+                  resolvedUrl: url.toString(),
+                  artifactKey: resolvedArtifactKey
+                });
+                success = true;
+                continue;
+              }
+              if (resolvedArtifactKey) seenArtifactKeys.add(resolvedArtifactKey);
               addJobLog(job, "info", "URL resolvida; iniciando transferência", { index: i + 1, attempt, originalUrl: raw, resolvedUrl: url.toString(), resolvedFrom: context.resolvedFrom || (context.publicApiFallback ? "fonte pública alternativa" : "URL direta"), fallbackProject: context.fallbackProject || "", publicApiFallback: Boolean(context.publicApiFallback), publicProxyUsed: Boolean(context.publicProxyUsed), expectedSize: context.expectedSize || null, expectedHashes: context.expectedHashes || null, httpStatus: response.status, contentType: response.headers["content-type"] || "não informado", contentLength: response.headers["content-length"] || "não informado" });
 
               if (!filename) {
@@ -2473,12 +2573,13 @@ app.post("/api/build", async (req, res) => {
               if (downloadedHashes.has(contentHash)) {
                 await fsp.rm(target, { force: true }).catch(() => {});
                 total = Math.max(0, total - bytes);
-                addJobLog(job, "warn", "Mod duplicado ignorado", {
+                addJobLog(job, "warn", "Mod duplicado ignorado por SHA-256", {
                   index: i + 1,
                   originalUrl: raw,
                   filename,
                   bytes,
-                  sha256: contentHash
+                  sha256: contentHash,
+                  artifactKey: context.artifactKey || null
                 });
                 success = true;
                 updateJob(job, {
@@ -2489,13 +2590,23 @@ app.post("/api/build", async (req, res) => {
                 });
               } else {
                 downloadedHashes.add(contentHash);
-                files.push({ filename, target, source: raw, size: bytes, resolvedFrom: context.resolvedFrom || null });
+                files.push({
+                  filename,
+                  target,
+                  source: raw,
+                  size: bytes,
+                  contentHash,
+                  artifactKey: context.artifactKey || curseForgeCdnArtifactKey(url) || (strongPublishedHash(context.expectedHashes) ? "sha:" + strongPublishedHash(context.expectedHashes) : null),
+                  resolvedFrom: context.resolvedFrom || null
+                });
               }
               if (Array.isArray(context.dependencyUrls) && context.dependencyUrls.length) {
                 let dependenciesAdded = 0;
                 for (const dependencyUrl of context.dependencyUrls) {
-                  if (!uniqueLinks.includes(dependencyUrl)) {
+                  const key = normalizeDuplicateUrl(dependencyUrl);
+                  if (key && !seenLinkKeys.has(key)) {
                     uniqueLinks.push(dependencyUrl);
+                    seenLinkKeys.add(key);
                     dependenciesAdded += 1;
                   }
                 }
@@ -2589,7 +2700,46 @@ app.post("/api/build", async (req, res) => {
           failedLinks: failures.length
         });
         if (!files.length) throw new Error("Nenhum arquivo válido pôde ser incluído no ZIP.");
-        const orderedFiles = [...files].sort((a, b) => String(a.filename).localeCompare(String(b.filename), "en", { sensitivity: "base" }) || String(a.source).localeCompare(String(b.source), "en"));
+
+        // Auditoria final independente: revalida SHA-256 de tudo que ainda será empacotado.
+        const beforeAuditCount = files.length;
+        const auditedHashes = new Set();
+        const auditedFiles = [];
+        for (const file of files) {
+          const hash = String(file.contentHash || await fileSha256(file.target)).toLowerCase();
+          if (auditedHashes.has(hash)) {
+            await fsp.rm(file.target, { force: true }).catch(() => {});
+            total = Math.max(0, total - Number(file.size || 0));
+            addJobLog(job, "warn", "Auditoria final removeu duplicata", {
+              filename: file.filename,
+              bytes: Number(file.size || 0),
+              sha256: hash,
+              artifactKey: file.artifactKey || null
+            });
+            continue;
+          }
+          auditedHashes.add(hash);
+          file.contentHash = hash;
+          auditedFiles.push(file);
+        }
+        files = auditedFiles;
+        addJobLog(job, "success", "Auditoria final de duplicação concluída", {
+          uniqueFiles: files.length,
+          duplicateFilesRemoved: Math.max(0, beforeAuditCount - files.length)
+        });
+        if (!files.length) throw new Error("A auditoria final não encontrou nenhum arquivo único.");
+
+        const finalNames = new Set();
+        for (const file of files) {
+          const nameKey = String(file.filename || "").toLowerCase();
+          if (!nameKey) throw new Error("Auditoria final encontrou um arquivo sem nome.");
+          if (finalNames.has(nameKey)) throw new Error("Auditoria final detectou duas entradas com o mesmo nome no ZIP: " + file.filename);
+          finalNames.add(nameKey);
+        }
+        const orderedFiles = [...files].sort((a, b) =>
+          String(a.filename).toLowerCase().localeCompare(String(b.filename).toLowerCase(), "en") ||
+          String(a.source).localeCompare(String(b.source), "en")
+        );
         updateJob(job, { status: "zipping", percent: 90, message: "📦 Criando o ZIP..." });
         const safeVersion = minecraftVersion.replace(/[^0-9A-Za-z._-]/g, "_");
         const zipName = `Mikael_Modpack_${safeVersion}.zip`;
@@ -2698,6 +2848,10 @@ module.exports = {
   isClientCompatibleEnvironment,
   isKnownModrinthLoader,
   redactUrl,
+  normalizeDuplicateUrl,
+  curseForgeCdnArtifactKey,
+  strongPublishedHash,
+  fileSha256,
   jobs,
   uploads,
   modrinthCache,
