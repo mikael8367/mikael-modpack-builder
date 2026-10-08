@@ -29,7 +29,7 @@ async function currentUser(req) {
   return accounts.getUserByToken(parseCookies(req).mikael_session);
 }
 function authCookie(token) {
-  return "mikael_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + (30 * 86400);
+  return "mikael_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + (30 * 86400);
 }
 function clearAuthCookie() {
   return "mikael_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
