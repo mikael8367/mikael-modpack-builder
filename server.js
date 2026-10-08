@@ -20,7 +20,7 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 3000;
 const MAX_LINKS = 999999;
 const MAX_FILE_BYTES = 150 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 500 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 5 * 1024 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const UPLOAD_TTL_MS = 30 * 60 * 1000;
 const JOB_TTL_MS = 60 * 60 * 1000;
@@ -121,7 +121,7 @@ const MAX_UPLOAD_BODY_BYTES = MAX_TOTAL_BYTES + 8 * 1024 * 1024;
 function uploadBodyGuard(req, res, next) {
   const declared = Number(req.headers["content-length"] || 0);
   if (declared > MAX_UPLOAD_BODY_BYTES) {
-    return res.status(413).json({ error: "O upload excede o limite total de 500 MB." });
+    return res.status(413).json({ error: "O upload excede o limite total de 5 GB." });
   }
   let seen = 0;
   const onData = chunk => {
@@ -164,7 +164,7 @@ app.post("/api/upload-files", uploadBodyGuard, upload.array("files"), async (req
   const uploadTotal = files.reduce((sum, f) => sum + Number(f.size || 0), 0);
   if (uploadTotal > MAX_TOTAL_BYTES) {
     await Promise.all(files.map(f => f.path ? fsp.rm(f.path, { force: true }).catch(() => {}) : Promise.resolve()));
-    return res.status(400).json({ error: "Os arquivos selecionados ultrapassam 500 MB no total." });
+    return res.status(400).json({ error: "Os arquivos selecionados ultrapassam 5 GB no total." });
   }
   const invalid = files.filter(f => !/\.(jar|zip|litemod)$/i.test(f.originalname || ""));
   if (invalid.length) {
@@ -2264,7 +2264,7 @@ app.post("/api/build", async (req, res) => {
             await fsp.copyFile(f.path, target);
             const st = await fsp.stat(target);
             total += st.size;
-            if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
+            if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 5 GB.");
             reservedNames.add(f.filename.toLowerCase());
             files.push({ filename: f.filename, target, source: "arquivo local", size: st.size });
             const current = files.length;
@@ -2315,7 +2315,7 @@ app.post("/api/build", async (req, res) => {
               if (expected > MAX_FILE_BYTES) throw new Error("O arquivo " + filename + " ultrapassa 150 MB.");
               if (expected > 0) {
                 if (!canReserveDownloadBytes(total, reservedBytes, expected)) {
-                  throw new Error("O pacote não tem espaço suficiente para baixar " + filename + " sem ultrapassar 500 MB.");
+                  throw new Error("O pacote não tem espaço suficiente para baixar " + filename + " sem ultrapassar 5 GB.");
                 }
                 reservedForThis = expected;
                 reservedBytes += expected;
@@ -2358,7 +2358,7 @@ app.post("/api/build", async (req, res) => {
               if (context.expectedSize && bytes !== context.expectedSize) {
                 throw new Error("O tamanho baixado de " + filename + " não corresponde ao tamanho publicado.");
               }
-              if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 500 MB.");
+              if (total > MAX_TOTAL_BYTES) throw new Error("O pacote ultrapassa 5 GB.");
               await validateArchiveFile(target, filename);
               addJobLog(job, "success", "Arquivo reconhecido como JAR/ZIP válido", { index: i + 1, filename, bytes });
               await verifyFileIntegrity(target, context.expectedHashes, filename);
