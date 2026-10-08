@@ -113,7 +113,7 @@ axios.get = async function hardenedAxiosGet(url, config = {}) {
   const exact = bestProjectHit(originalHits, wanted);
   if (exact && Number(exact.classId || 0) === 6 && normalize(exact.slug) === normalize(wanted)) return originalResponse;
 
-  const aliasTerms = SEARCH_ALIASES[normalize(wanted)] || [];
+  const aliasTerms = SEARCH_ALIASES[normalize(wanted)] || SEARCH_ALIASES[String(wanted).trim().toLowerCase()] || [];
   const searchTerms = [...new Set([
     wanted,
     wanted.replace(/[-_]+/g, " "),
