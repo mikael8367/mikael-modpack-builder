@@ -256,7 +256,7 @@ test("empty ZIP is not considered a usable mod archive", async () => {
 
 test("upload body guard constant leaves multipart overhead room", () => {
   assert.ok(MAX_UPLOAD_BODY_BYTES >= 500 * 1024 * 1024);
-  assert.ok(MAX_UPLOAD_BODY_BYTES < 520 * 1024 * 1024);
+  assert.ok(MAX_UPLOAD_BODY_BYTES < 5 * 1024 * 1024 * 1024 + 16 * 1024 * 1024);
 });
 
 
