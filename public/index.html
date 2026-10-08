@@ -506,7 +506,6 @@ document.getElementById('build').addEventListener('click',async()=>{
     statusPollTimer=setInterval(statusPoll,10000);
     statusPoll();
     let reconnectTimer=null;
-    let es=null;
     await new Promise((resolve,reject)=>{
       let finished=false;
       let retries=0;
