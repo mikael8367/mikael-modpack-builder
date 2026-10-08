@@ -1580,9 +1580,6 @@ function alternateCurseForgeCdnUrl(rawUrl) {
 
 async function requestFile(rawUrl, context = {}) {
   let current = await resolveCurseForgeUrl(rawUrl, context);
-  let curseForgeSource = false;
-  try { curseForgeSource = isCurseForgeHost(new URL(rawUrl).hostname); } catch {}
-  let triedPublicModrinthAfterCdn = false;
   current = await resolveModrinthUrl(current, context);
   current = rewriteCurseForgeCdnMirror(current, context);
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
@@ -1649,7 +1646,6 @@ async function requestFile(rawUrl, context = {}) {
             const fallbackUrl = await resolver();
             if (fallbackUrl && fallbackUrl !== current) {
               current = await resolveModrinthUrl(fallbackUrl, context);
-              triedPublicModrinthAfterCdn = true;
               switched = true;
               break;
             }
