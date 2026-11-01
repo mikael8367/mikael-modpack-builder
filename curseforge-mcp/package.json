@@ -1,0 +1,20 @@
+{
+  "name": "mikael-curseforge-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP remoto e somente leitura para consultar a API oficial do CurseForge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "express": "^4.22.3",
+    "zod": "^4.1.12"
+  }
+}
