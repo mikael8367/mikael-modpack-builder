@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - "curseforge-mcp/**"
+      - ".github/workflows/curseforge-mcp.yml"
   push:
     branches:
       - main
     paths:
       - "curseforge-mcp/**"
+      - ".github/workflows/curseforge-mcp.yml"
 
 jobs:
   verify:
@@ -21,9 +23,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: curseforge-mcp/package-lock.json
-      - run: npm install --package-lock-only
-      - run: npm ci
+      - run: npm install
       - run: npm run check
       - run: npm test
