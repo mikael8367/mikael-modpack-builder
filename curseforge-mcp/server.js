@@ -38,7 +38,7 @@ async function curseforge(path, params = {}) {
       : "A API CurseForge respondeu HTTP " + response.status + ".";
     throw new Error(message);
   }
-  return body.data ?? body;
+  return body;
 }
 
 function makeServer() {
